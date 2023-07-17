@@ -59,3 +59,20 @@ def save_plot(plot_title):
     if not os.path.exists('plots/'):
         os.mkdir('plots/')
     plt.savefig('plots/' + plot_title + '.png', bbox_inches='tight')
+
+
+def plot_uptake_plots(peptide_exchange_dict, timepoints, stdev_dict_dict, color_dict, peptide_fit_dict, ax1, trialT, peptides_2):
+    for peptide in peptide_exchange_dict:
+        element = peptide_exchange_dict.get(peptide)
+        if element is not None:
+            handle_element(peptide, element, timepoints, stdev_dict_dict,
+                           color_dict, peptide_fit_dict, ax1, trialT)
+            for list_item in peptides_2:
+                plot_title, y_lim = handle_list_item(
+                    list_item, peptide, ax1, peptides_2)
+                if plot_title and y_lim is not None:
+                    adjust_plot(ax1, plot_title, y_lim)
+                    save_plot(plot_title)
+            ax1.clear()
+
+    plt.close('all')

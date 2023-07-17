@@ -83,3 +83,16 @@ def fit_single_peptide(peptide, element, state, max_protons, trialT, timepoints)
     sub_params_dict[state] = popt
     sub_err_dict[state] = perr
     return sub_fit_dict, sub_params_dict, sub_err_dict
+
+
+# Create a function to generate pairs
+def generate_pairs(states, args):
+    pairs = []
+    if len(states) > 1:
+        for state1 in states:
+            for state2 in states:
+                if [state2, state1] not in pairs and state1 != state2:
+                    pairs.append([state1, state2])
+        if (args.s1 is not None) and (args.s2 is not None):
+            pairs.append([args.s1, args.s2])
+    return pairs

@@ -1,4 +1,7 @@
 import pandas as pd
+import numpy as np
+from utils import compile_exchange_info, fit_functions
+
 
 
 def process_table(table):
@@ -63,8 +66,6 @@ def include_ranges(newbigdf, rangeslist):
     return cleaned
 
 
-
-
 def get_unique_sorted(series):
     return sorted(set(series))
 
@@ -104,3 +105,45 @@ def create_peptides_list(sequence_df):
     return [f"{sequence_df['Start'][i]}-{sequence_df['End'][i]}- {sequence_df['Sequence'][i]}" for i in range(len(sequence_df))]
 
 #peptides_2 = create_peptides_list(sequence_df)
+
+
+
+def load_data(args):
+    newbigdf = pd.DataFrame()
+
+    # Process all tables
+    for table in args.table:
+        newbigdf = pd.concat([newbigdf, process_table(table)])
+
+    # Convert columns to the appropriate data types
+    newbigdf['Start'] = newbigdf['Start'].apply(np.int64)
+    newbigdf['End'] = newbigdf['End'].apply(np.int64)
+    newbigdf['#D'] = newbigdf['#D'].apply(float)
+
+    return newbigdf
+
+
+def clean_data(args, newbigdf):
+    cleaned = load_ranges_file(args.ranges, newbigdf, args.exclude)
+    cleaned = process_cleaned_data(cleaned)
+
+    states = list(dict.fromkeys(cleaned['Protein State']))
+    peptides = list(dict.fromkeys(cleaned['Sequence']))
+    timepoints = list(dict.fromkeys(cleaned['Deut Time (sec)']))
+
+    states_dict, first_res, peptides_2 = create_sequence_dict(cleaned, states)
+
+    return cleaned, states, peptides, timepoints, states_dict, first_res, peptides_2
+
+
+def fit_data(cleaned, states, states_dict, peptides, timepoints):
+    # Compile the exchange information
+    peptide_exchange_dict, stdev_dict_dict = compile_exchange_info(
+        cleaned, states, states_dict)
+
+    # Fit the exchange functions
+    trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict = fit_functions(
+        peptides, peptide_exchange_dict, timepoints)
+
+    return peptide_exchange_dict, stdev_dict_dict, trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict
+
