@@ -67,18 +67,21 @@ def fit_single_peptide(peptide, element, state, max_protons, trialT, timepoints)
         if peptide1_ex[-1] > .5:
             popt, pcov = curve_fit(f = exchange_fit, xdata = peptide1_tps, ydata = peptide1_ex,
                                     bounds = (0, [max_protons, max_protons, max_protons, 1, .1, .01, max_protons]),
-                                    maxfev = 10000)
+                                    maxfev = 1000)
             exchange_peptide1 = exchange_fit(trialT, *popt)
             perr = np.sqrt(np.diag(pcov))
 
         else:
             popt, pcov = curve_fit(f = exchange_fit_low, xdata = peptide1_tps, ydata = peptide1_ex,
                                     bounds = (0, [max_protons, max_protons, .1, .01, max_protons]),
-                                    maxfev = 10000)
+                                    maxfev = 1000)
             exchange_peptide1 = exchange_fit_low(trialT, *popt)
             perr = np.sqrt(np.diag(pcov))
     except:
-        popt, pcov = np.zeros(popt.shape), np.zeros(pcov.shape)
+        #popt, pcov = np.zeros(popt.shape), np.zeros(pcov.shape)
+        popt, pcov = np.zeros(7), np.zeros(7)
+        exchange_peptide1 = np.zeros(len(trialT))
+        perr = np.zeros(7)
     sub_fit_dict[state] = exchange_peptide1
     sub_params_dict[state] = popt
     sub_err_dict[state] = perr
