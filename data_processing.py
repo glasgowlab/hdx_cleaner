@@ -10,6 +10,7 @@ def process_table(table):
     header = bigdf.iloc[:, 0:8].copy()  # create a copy
     header.columns = header.iloc[0]
     header.drop(0, inplace=True)
+ 
 
     new_df = pd.DataFrame()
     tp_frames = bigdf.columns[8::8]
@@ -17,6 +18,9 @@ def process_table(table):
     for i, tp_frame in enumerate(tp_frames):
         # pass a copy of header and bigdf to the function
         new_df = process_tp_frame(header.copy(), bigdf.copy(), tp_frame, i, new_df)
+
+    #capitalise the state names and keep only the first 3 letters
+    new_df['State'] = new_df['State'].str.upper().str[:3]
     
     return new_df
 
@@ -29,6 +33,8 @@ def process_tp_frame(header, bigdf, tp_frame, i, new_df):
     tpdict = pd.concat([header, tpdict], axis=1)
     tpdict.loc[:, 'Deut Time (sec)'] = float(tp_frame.split('s')[0])
     new_df = pd.concat([new_df, tpdict])
+    
+
 
     return new_df
 

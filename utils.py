@@ -20,7 +20,8 @@ def compile_exchange_info(cleaned, states, states_dict):
     return peptide_exchange_dict, stdev_dict_dict
 
 def fit_functions(peptides, peptide_exchange_dict, timepoints):
-    trialT = np.logspace(1.5, np.log10(max(timepoints)*2), 1000)
+    #trialT = np.logspace(1.5, np.log10(max(timepoints)*2), 1000)
+    trialT = np.logspace(1.5, np.log10(max(timepoints)), 1000)
     peptide_fit_dict = {}
     peptide_params_dict = {}
     peptide_err_dict = {}
@@ -36,13 +37,14 @@ def fit_functions(peptides, peptide_exchange_dict, timepoints):
         element = peptide_exchange_dict.get(peptide) # element is state
         if element is not None:
             for state in element.keys():
-                sub_fit_dict, sub_params_dict, sub_err_dict = fit_single_peptide(peptide, element, state, max_protons, trialT, timepoints)
+                #print(f"Fitting {peptide} in {state} state")
+                sub_fit_dict, sub_params_dict, sub_err_dict = fit_single_peptide(element, state, max_protons, trialT, timepoints)
                 peptide_fit_dict[peptide].append(sub_fit_dict)
                 peptide_params_dict[peptide].append(sub_params_dict)
                 peptide_err_dict[peptide].append(sub_err_dict)
     return trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict
 
-def fit_single_peptide(peptide, element, state, max_protons, trialT, timepoints):
+def fit_single_peptide(element, state, max_protons, trialT, timepoints):
     def exchange_fit(x, a, b, c, d, e, f, g):
         return max_protons - a * np.exp(-d * x) - b * np.exp(-e * x) - c * np.exp(-f * x) - g
 

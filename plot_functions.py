@@ -31,11 +31,14 @@ def handle_element(peptide, element, timepoints, stdev_dict_dict, color_dict, pe
                 current_stdev_dict = stdev_dict_dict.get(key)
                 current_stdev = current_stdev_dict.get(peptide).flatten()[0:len(timepoints)]
         if element.get(state).size != 0:
-            ax1.plot(timepoints, element.get(state), 'o', label = state, markersize = 18, alpha = 0.5,
+            #print(f"Plotting {peptide} in {state} state")
+            reduced_timepoints = timepoints[0:len(element.get(state))]
+            ax1.plot(reduced_timepoints, element.get(state), 'o', label = state, markersize = 18, alpha = 0.5,
                 color = color_dict.get(state))
         for element_2 in peptide_fit_dict.get(peptide):
             for e2_key in element_2:
                 if e2_key == state:
+
                     ax1.plot(trialT, element_2.get(state), '-', color = color_dict.get(state))
 
 def handle_list_item(list_item, peptide, ax1, peptides_2):

@@ -16,7 +16,7 @@ import seaborn as sns
 from pymol import cmd
 import os
 
-colorbar_max = 0.2
+colorbar_max = 0.05
 delta_LD_threshold = 0.075
 
 # preprocessing: get cleaned peptide dataframe
