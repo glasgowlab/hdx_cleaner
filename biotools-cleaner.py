@@ -173,8 +173,8 @@ print('mean score: ' + str(np.mean(cleaned['Score'])))
 figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
 plt.xlabel('|delta-ppm|')
 plt.ylabel('n')
-plt.hist(abs(data['Dev.(ppm)'].apply(float) - invfn(data['Meas. M/z'].apply(float), *popt)), log=True, bins=20)
-plt.hist(abs(cleaned['Dev.(ppm)'].apply(float) - invfn(cleaned['Meas. M/z'].apply(float), *popt)), log=True, bins=20)
+plt.hist(abs(data['Dev.(ppm)'].apply(float) - invfn(data['Meas. M/z'].apply(float), *popt)), log=True, bins=100)
+plt.vlines(ppm_threshold, 0, len(cleaned), linestyles='dashed', colors='k')
 plt.savefig(plots + '/hist-ppms.png')
 
 # scatterplot of ppm-thresholded data
