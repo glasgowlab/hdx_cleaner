@@ -79,3 +79,76 @@ def plot_uptake_plots(peptide_exchange_dict, timepoints, stdev_dict_dict, color_
             ax1.clear()
 
     plt.close('all')
+
+class UptakePlot:
+    def __init__(self, hdxms_data, sequence, color_dict=None):
+        self.hdxms_data = hdxms_data
+        self.sequence = sequence
+        self.color_dict = self.make_color_dict(color_dict)
+        self.peptide_uptakeplot = self.plot_peptide()
+
+        
+    def plot_peptide(self):
+        figure, ax = plt.subplots(1, 1, figsize=(9,8))
+        for state in self.hdxms_data.states:
+            
+            peptide = state.get_peptide(self.sequence)
+
+            if peptide is not None:
+
+                ax.plot([tp.deut_time for tp in peptide.timepoints], 
+                        [tp.num_d for tp in peptide.timepoints], 
+                        'o', markersize = 18, alpha = 0.5, label =state.state_name, color=self.color_dict[state.state_name])
+
+                # Plot the fit
+                trialT, y_pred, popt, perr =  peptide.fit_results
+                ax.plot(trialT, y_pred, '-', color=self.color_dict[state.state_name])
+
+                # set up the plot
+                ax.set_ylabel('# Deuterons')
+                ax.set_xlabel('Time (seconds)')
+                ax.set_xscale('log')
+                ax.set_ylim(0, peptide.max_d*1.1)
+                #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+                ax.legend()
+                ax.set_title(f'{peptide.start}-{peptide.end} {peptide.sequence}')
+                plt.close()
+
+        return figure
+    
+    def make_color_dict(self, color_dict=None):
+        if color_dict is None:
+            colors = ['k', 'red', 'blue', 'purple', 'gray', 'orange', 'yellow', 'green', 'brown']
+            
+            color_dict = {}
+            state_names = [state.state_name for state in self.hdxms_data.states]
+            for i, state_name in enumerate(state_names):
+                color_dict[state_name] = colors[i]
+        return color_dict
+    
+    
+class UptakePlotsCollection:
+    def __init__(self, hdxms_data):
+        self.hdxms_data = hdxms_data
+        self.plots = []
+        
+    def add_plot(self, sequence):
+        plot = UptakePlot(self.hdxms_data, sequence)
+        self.plots.append(plot)
+        
+    def plot_all(self):
+        unique_sequences = self.get_unique_sequences()
+        for sequence in unique_sequences:
+            self.add_plot(sequence[2])
+        
+
+    def get_unique_sequences(self):
+        sequences = []
+        for state in self.hdxms_data.states:
+            for peptide in state.peptides:
+                sequences.append((peptide.start, peptide.end, peptide.sequence))
+        sequences = list(set(sequences))
+        sequences.sort()
+        return sequences
+
+

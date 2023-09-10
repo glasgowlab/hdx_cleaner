@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from scipy.optimize import curve_fit
 from utils import compile_exchange_info, fit_functions
 
 
@@ -255,30 +256,73 @@ class ProteinState:
     def num_peptides(self):
         return len(self.peptides)
 
+    def get_peptide(self, sequence):
+        for peptide in self.peptides:
+            if peptide.sequence == sequence:
+                return peptide
+        return None
 
 class Peptide:
-    def __init__(self, sequence, start, end,):
+    def __init__(self, sequence, start, end, protein_state=None):
         self.sequence = sequence
         self.start = start
         self.end = end
-        #self.charge = charge
-        #self.search_rt = search_rt
-        #self.max_d = max_d
-
         self.timepoints = []
+
+        if protein_state is not None:
+            self.protein_state = protein_state
 
     def add_timepoint(self, timepoint):
         # Check if timepoint already exists
         for existing_timepoint in self.timepoints:
             if existing_timepoint.deut_time == timepoint.deut_time:
-                print("Timepoint already exists")
-                return
+                raise ValueError("Timepoint already exists")
+        
         self.timepoints.append(timepoint)
         return  timepoint
     
     @property
     def num_timepoints(self):
         return len(self.timepoints)
+
+    @property
+    def max_d(self):
+        num_prolines = self.sequence[2:].count('P')
+        max_d = len(self.sequence) - 2 - num_prolines
+        return max_d
+    
+    @property
+    def fit_results(self):
+
+       # print(f"Fitting {self.sequence}")
+        max_timepoint = max([tp.deut_time for tp in self.timepoints])
+        trialT = np.logspace(1.5, np.log10(max_timepoint*2), 1000)
+        
+        if self.timepoints[-1].num_d > 0.5:
+            x = [tp.deut_time for tp in self.timepoints]
+            y = [tp.num_d for tp in self.timepoints]
+            popt, pcov = curve_fit(f = exchange_fit, xdata = x, ydata = y,
+                    bounds = (0, [self.max_d, self.max_d, self.max_d, 1, .1, .01, self.max_d, self.max_d]),
+                    maxfev = 100000)
+            y_pred = exchange_fit(trialT, *popt)
+            perr = np.sqrt(np.diag(pcov))
+        else:
+            x = [tp.deut_time for tp in self.timepoints]
+            y = [tp.num_d for tp in self.timepoints]
+            popt, pcov = curve_fit(f = exchange_fit_low, xdata = x, ydata = y,
+                    bounds = (0, [self.max_d, self.max_d, .1, .01, self.max_d, self.max_d]),
+                    maxfev = 100000)
+            y_pred = exchange_fit_low(trialT, *popt)
+            perr = np.sqrt(np.diag(pcov))
+        return trialT, y_pred, popt, perr
+
+
+def exchange_fit(x, a, b, c, d, e, f, g, max_d):
+    return max_d - a * np.exp(-d * x) - b * np.exp(-e * x) - c * np.exp(-f * x) - g
+
+def exchange_fit_low(x, b, c, e, f, g, max_d):
+    return max_d - b * np.exp(-e * x) - c * np.exp(-f * x) - g
+
 
 
 class Timepoint:
@@ -323,12 +367,17 @@ def load_data_to_hdxmsdata(df, protein_name="LacI"):
         
         # If peptide does not exist, create and add to ProteinState
         if not peptide:
-            peptide = Peptide(row['Sequence'], row['Start'], row['End'])
+            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state)
             protein_state.add_peptide(peptide)
         
         # Add timepoint data to peptide
         timepoint = Timepoint(row['Deut Time (sec)'], row['#D'], row['Stddev'])
-        peptide.add_timepoint(timepoint)
+        
+        # if timepoint has no data, skip
+        if np.isnan(timepoint.num_d):
+            continue
+        else:
+            peptide.add_timepoint(timepoint)
     
     return hdxms_data
 
