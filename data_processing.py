@@ -3,6 +3,70 @@ import numpy as np
 from utils import compile_exchange_info, fit_functions
 
 
+import pandas as pd
+
+class RangeList:
+    def __init__(self, range_list_path):
+        df = pd.read_csv(range_list_path)
+        if len(df.columns) != 2:
+            self.range_list = df[['Start', 'End']].drop_duplicates().sort_values(by='Start').reset_index(drop=True)
+        else:   
+            self.range_list = df[["Start", "End"]]
+    
+    def to_set(self):
+        return set(tuple(row) for _, row in self.range_list.iterrows())
+    
+    def to_dataframe(self):
+        return self.range_list
+    
+    def to_csv(self, path):
+        self.range_list.to_csv(path, index=False)
+    
+    def union(self, other):
+        if isinstance(other, RangeList):
+            other_set = other.to_set()
+        elif isinstance(other, set):
+            other_set = other
+        else:
+            print("Invalid input. Please provide a RangeList object or a set.")
+            return None
+        
+        result_set = self.to_set().union(other_set)
+        result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
+        result_df = result_df.astype(int)
+        result_df = result_df.sort_values(by="Start").reset_index(drop=True)
+        return result_df
+    
+    def intersection(self, other):
+        if isinstance(other, RangeList):
+            other_set = other.to_set()
+        elif isinstance(other, set):
+            other_set = other
+        else:
+            print("Invalid input. Please provide a RangeList object or a set.")
+            return None
+        
+        result_set = self.to_set().intersection(other_set)
+        result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
+        result_df = result_df.astype(int)
+        result_df = result_df.sort_values(by="Start").reset_index(drop=True)
+        return result_df
+    
+    def difference(self, other):
+        if isinstance(other, RangeList):
+            other_set = other.to_set()
+        elif isinstance(other, set):
+            other_set = other
+        else:
+            print("Invalid input. Please provide a RangeList object or a set.")
+            return None
+        
+        result_set = self.to_set().difference(other_set)
+        result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
+        result_df = result_df.astype(int)
+        result_df = result_df.sort_values(by="Start").reset_index(drop=True)
+        return result_df
+
 
 def process_table(table):
     """Process a single table"""
