@@ -316,6 +316,17 @@ class Peptide:
             perr = np.sqrt(np.diag(pcov))
         return trialT, y_pred, popt, perr
 
+    def get_deut(self, deut_time):
+        for timepoint in self.timepoints:
+            if timepoint.deut_time == deut_time:
+                return timepoint.num_d
+        return None
+    
+    def get_timepoint(self, deut_time):
+        for timepoint in self.timepoints:
+            if timepoint.deut_time == deut_time:
+                return timepoint
+        return None
 
 def exchange_fit(x, a, b, c, d, e, f, g, max_d):
     return max_d - a * np.exp(-d * x) - b * np.exp(-e * x) - c * np.exp(-f * x) - g
@@ -382,4 +393,68 @@ def load_data_to_hdxmsdata(df, protein_name="LacI"):
     return hdxms_data
 
 
+class HDXStateCompare:
+    def __init__(self, state1, state2):
+        self.state1 = state1
+        self.state2 = state2
+        self.peptide_compares = []
+    
+    @property
+    def common_sequences(self):
+        common_sequences = []
+        for peptide in self.state1.peptides:
+            if self.state2.get_peptide(peptide.sequence) is not None:
+                common_sequences.append(peptide.sequence)
+        return common_sequences
+
+    def add_all_compare(self):
+        for sequence in self.common_sequences:
+            peptide1 = self.state1.get_peptide(sequence)
+            peptide2 = self.state2.get_peptide(sequence)
+            peptide_compare = PeptideCompare(peptide1, peptide2)
+            self.peptide_compares.append(peptide_compare)
+
+class PeptideCompare:
+    def __init__(self, peptide1, peptide2):
+        self.peptide1 = peptide1
+        self.peptide2 = peptide2
+        
+        #if not same sequence, raise error
+        if self.peptide1.sequence != self.peptide2.sequence:
+            raise ValueError('Cannot compare peptides with different sequences')
+    
+    @property
+    def compare_info(self):
+        return f'{self.peptide1.protein_state.state_name}-{self.peptide2.protein_state.state_name}: {self.peptide1.start}-{self.peptide1.end} {self.peptide1.sequence}'
+    
+    
+    @property
+    def common_timepoints(self):
+        common_timepoints = []
+        for tp in self.peptide1.timepoints:
+            if self.peptide2.get_timepoint(tp.deut_time) is not None:
+                common_timepoints.append(tp.deut_time)
+        return np.array(common_timepoints)
+
+    @property
+    def deut_diff(self):
+
+        deut_diff = []
+        for timepoint in self.common_timepoints:
+            deut_diff.append(self.get_deut_diff(timepoint))
+
+        deut_diff = np.array(deut_diff)/self.peptide1.max_d
+        return deut_diff
+
+    @property
+    def deut_diff_sum(self):
+        return np.sum(self.deut_diff)
+
+    @property
+    def deut_diff_avg(self):
+        return np.average(self.deut_diff)
+
+    def get_deut_diff(self, timepoint):
+        
+        return self.peptide1.get_deut(timepoint) - self.peptide2.get_deut(timepoint)
 

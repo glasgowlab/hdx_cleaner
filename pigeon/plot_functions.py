@@ -111,7 +111,8 @@ class UptakePlot:
                 ax.set_ylim(0, peptide.max_d*1.1)
                 #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
                 ax.legend()
-                ax.set_title(f'{peptide.start}-{peptide.end} {peptide.sequence}')
+                self.title = f'{peptide.start}-{peptide.end} {peptide.sequence}'
+                ax.set_title(self.title)
                 plt.close()
 
         return figure
