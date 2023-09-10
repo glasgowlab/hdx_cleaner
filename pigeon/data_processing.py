@@ -3,8 +3,6 @@ import numpy as np
 from utils import compile_exchange_info, fit_functions
 
 
-import pandas as pd
-
 class RangeList:
     def __init__(self, range_list_path):
         df = pd.read_csv(range_list_path)
@@ -106,7 +104,8 @@ def process_tp_frame(header, bigdf, tp_frame, i, new_df):
 def load_ranges_file(ranges_file, newbigdf, exclude=False):
     """Load the ranges file"""
 
-    rangeslist = pd.read_csv(ranges_file)
+    #rangeslist = pd.read_csv(ranges_file)
+    rangeslist = RangeList(ranges_file).to_dataframe()
 
     if exclude:
         cleaned = exclude_ranges(newbigdf, rangeslist)
@@ -216,4 +215,122 @@ def fit_data(cleaned, states, states_dict, peptides, timepoints):
         peptides, peptide_exchange_dict, timepoints)
 
     return peptide_exchange_dict, stdev_dict_dict, trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict
+
+
+class HDXMSData:
+    def __init__(self, protein_name):
+        self.protein_name = protein_name
+        self.states = []
+
+    def add_state(self, state):
+        # Check if state already exists
+        for existing_state in self.states:
+            if existing_state.state_name == state.state_name:
+                raise ValueError("State already exists")
+        self.states.append(state)
+        return state
+    
+    def load_protein_sequence(self, sequence):
+        self.protein_sequence = sequence
+
+    @property
+    def num_states(self):
+        return len(self.states)
+    
+
+class ProteinState:
+    def __init__(self, state_name):
+        self.peptides = []
+        self.state_name = state_name
+
+    def add_peptide(self, peptide):
+        # Check if peptide already exists
+        for existing_peptide in self.peptides:
+            if existing_peptide.sequence == peptide.sequence:
+                raise ValueError("Peptide already exists")
+        self.peptides.append(peptide)
+        return peptide
+
+    @property
+    def num_peptides(self):
+        return len(self.peptides)
+
+
+class Peptide:
+    def __init__(self, sequence, start, end,):
+        self.sequence = sequence
+        self.start = start
+        self.end = end
+        #self.charge = charge
+        #self.search_rt = search_rt
+        #self.max_d = max_d
+
+        self.timepoints = []
+
+    def add_timepoint(self, timepoint):
+        # Check if timepoint already exists
+        for existing_timepoint in self.timepoints:
+            if existing_timepoint.deut_time == timepoint.deut_time:
+                print("Timepoint already exists")
+                return
+        self.timepoints.append(timepoint)
+        return  timepoint
+    
+    @property
+    def num_timepoints(self):
+        return len(self.timepoints)
+
+
+class Timepoint:
+    def __init__(self, deut_time, num_d, stddev):
+        self.deut_time = deut_time
+        self.num_d = num_d
+        self.stddev = stddev
+
+
+def load_data_to_hdxmsdata(df, protein_name="LacI"):
+    ''' 
+    Load data from dataframe to HDXMSData object
+
+    example usage:
+    hdxms_data = load_data_to_hdxmsdata(cleaned)
+
+    cleaned: dataframe containing cleaned data
+    
+    '''
+    hdxms_data = HDXMSData(protein_name)
+    
+    # Iterate over rows in the dataframe
+    for _, row in df.iterrows():
+        # Check if protein state exists
+        protein_state = None
+        for state in hdxms_data.states:
+            if state.state_name == row['Protein State']:
+                protein_state = state
+                break
+        
+        # If protein state does not exist, create and add to HDXMSData
+        if not protein_state:
+            protein_state = ProteinState(row['Protein State'])
+            hdxms_data.add_state(protein_state)
+        
+        # Check if peptide exists in current state
+        peptide = None
+        for pep in protein_state.peptides:
+            if pep.sequence == row['Sequence']:
+                peptide = pep
+                break
+        
+        # If peptide does not exist, create and add to ProteinState
+        if not peptide:
+            peptide = Peptide(row['Sequence'], row['Start'], row['End'])
+            protein_state.add_peptide(peptide)
+        
+        # Add timepoint data to peptide
+        timepoint = Timepoint(row['Deut Time (sec)'], row['#D'], row['Stddev'])
+        peptide.add_timepoint(timepoint)
+    
+    return hdxms_data
+
+
 
