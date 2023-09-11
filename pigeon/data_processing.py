@@ -238,6 +238,13 @@ class HDXMSData:
     def num_states(self):
         return len(self.states)
     
+    def get_state(self, state_name):
+        for state in self.states:
+            if state.state_name == state_name:
+                return state
+        return None
+    
+    
 
 class ProteinState:
     def __init__(self, state_name):
@@ -413,6 +420,16 @@ class HDXStateCompare:
             peptide2 = self.state2.get_peptide(sequence)
             peptide_compare = PeptideCompare(peptide1, peptide2)
             self.peptide_compares.append(peptide_compare)
+
+    def to_dataframe(self):
+        df = pd.DataFrame()
+        for peptide_compare in self.peptide_compares:
+            peptide_compare_df = pd.DataFrame([{'Sequence': peptide_compare.compare_info.split(': ')[1],'deut_diff_avg': peptide_compare.deut_diff_avg}])
+            df = pd.concat([df, peptide_compare_df], ignore_index=True)
+        df = df.pivot_table(index='Sequence', values='deut_diff_avg')
+        df.index = pd.CategoricalIndex(df.index, categories=[i.compare_info.split(': ')[1] for i in self.peptide_compares])
+        df = df.sort_index()
+        return df
 
 class PeptideCompare:
     def __init__(self, peptide1, peptide2):
