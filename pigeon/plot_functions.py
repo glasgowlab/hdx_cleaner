@@ -7,6 +7,7 @@ from matplotlib import cm
 import pandas as pd
 import seaborn as sns
 import numpy as np
+from data_processing import HDXStateResidueCompares, HDXStatePeptideCompares
 
 
 font = {'family' : 'Arial', 'weight' : 'normal', 'size' : 36}
@@ -201,7 +202,7 @@ class UptakePlotsCollection:
             plot = UptakePlot([hdxms_data], sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
             plot.reindex_title_from_pdb(self.pdb_file)
         else:
-            plot = UptakePlot([hdxms_data], sequence)
+            plot = UptakePlot([hdxms_data], sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
         self.plots.append(plot)
         
     def add_plot_all(self, hdxms_data):
@@ -276,7 +277,9 @@ def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):
     fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm))
 
     ax.set_title(compare.state1.state_name + '-' + compare.state2.state_name)
+    fig.tight_layout()
     plt.close()
+
     return fig
 
 from matplotlib import cm
@@ -316,6 +319,68 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
     ax = sns.heatmap(df, cmap=colormap, linewidths=.75, vmin=-colorbar_max, vmax=colorbar_max)
     ax.set_title(compare.state1.state_name + '-' + compare.state2.state_name)
     ax.set_ylabel('')
+    fig.tight_layout()
     plt.close()
-
+    
     return fig
+
+
+def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=None, path=None):
+
+    rgb_df = gen_rgb_df(compares, colorbar_max, colormap)
+
+    from pymol import cmd
+    cmd.delete('all')
+    cmd.load(pdb_file)
+    cmd.color("gray")
+
+    if isinstance(compares, HDXStatePeptideCompares):
+
+        for i, seq in enumerate(rgb_df['title']):
+            seq = seq.split()[-1]
+            cmd.select(seq, 'pepseq ' + seq)
+            cmd.set_color(seq, [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+            cmd.color(seq, seq)
+        
+    elif isinstance(compares, HDXStateResidueCompares):
+        for i, seq in enumerate(rgb_df['title']):
+            if np.isnan(rgb_df['s'].values[i]):
+                continue
+            seq = seq.split()[-1]
+            cmd.select(seq, 'resi ' + seq)
+            cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+            cmd.color(f'res_{seq}', seq)
+            cmd.delete(seq)
+    
+    cmd.ray(1000,1000)
+    
+    if path is not None:
+        if isinstance(compares, HDXStatePeptideCompares):
+            full_path = os.path.join(path, f'{compares.state1.state_name}-{compares.state2.state_name}_{colorbar_max}_pepcompare-pm.pse')
+        elif isinstance(compares, HDXStateResidueCompares):
+            full_path = os.path.join(path, f'{compares.state1.state_name}-{compares.state2.state_name}_{colorbar_max}_rescompare-pm.pse')
+        cmd.save(full_path)
+    else:
+        raise ValueError('Please provide a path to save the pymol session')
+    
+
+def gen_rgb_df(compare, colorbar_max, colormap="RdBu"):
+    colormap = plt.get_cmap(colormap)
+    df = pd.DataFrame()
+
+    compare_list = compare.residue_compares if isinstance(compare, HDXStateResidueCompares) else compare.peptide_compares
+
+    for compare_i in compare_list:
+        pep_dict = {}
+        pep_dict['title'] = compare_i.compare_info.split(': ')[1]
+        s_i = (compare_i.deut_diff_avg + colorbar_max) / (2 * colorbar_max)
+        pep_dict['s'] = s_i
+        df = pd.concat([df, pd.DataFrame(pep_dict, index=[0])], ignore_index=True)
+
+    df['s'].clip(upper=1, lower=0, inplace=True)
+    rgb = colormap(df['s']) * 255
+    df['r'] = rgb[:, 0]
+    df['g'] = rgb[:, 1]
+    df['b'] = rgb[:, 2]
+
+    return df

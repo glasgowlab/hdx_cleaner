@@ -5,13 +5,18 @@ from utils import compile_exchange_info, fit_functions
 
 
 class RangeList:
-    def __init__(self, range_list_path):
-        df = pd.read_csv(range_list_path)
-        if len(df.columns) != 2:
-            self.range_list = df[['Start', 'End']].drop_duplicates().sort_values(by='Start').reset_index(drop=True)
-        else:   
-            self.range_list = df[["Start", "End"]]
-    
+    def __init__(self, range_list_file=None, range_df=None):
+
+        if range_list_file is not None:
+            df = pd.read_csv(range_list_file)
+            if len(df.columns) != 2:
+                df = pd.read_csv(range_list_file,  skiprows=1)
+                self.range_list = df[['Start', 'End']].drop_duplicates().sort_values(by='Start').reset_index(drop=True)
+            else:   
+                self.range_list = df[["Start", "End"]]
+        else:
+            self.range_list = range_df
+
     def to_set(self):
         return set(tuple(row) for _, row in self.range_list.iterrows())
     
@@ -34,7 +39,7 @@ class RangeList:
         result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
         result_df = result_df.astype(int)
         result_df = result_df.sort_values(by="Start").reset_index(drop=True)
-        return result_df
+        return RangeList(range_df=result_df)
     
     def intersection(self, other):
         if isinstance(other, RangeList):
@@ -49,7 +54,7 @@ class RangeList:
         result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
         result_df = result_df.astype(int)
         result_df = result_df.sort_values(by="Start").reset_index(drop=True)
-        return result_df
+        return RangeList(range_df=result_df)
     
     def difference(self, other):
         if isinstance(other, RangeList):
@@ -64,7 +69,7 @@ class RangeList:
         result_df = pd.DataFrame(list(result_set), columns=["Start", "End"])
         result_df = result_df.astype(int)
         result_df = result_df.sort_values(by="Start").reset_index(drop=True)
-        return result_df
+        return RangeList(range_df=result_df)
 
 
 def process_table(table):
@@ -244,7 +249,39 @@ class HDXMSData:
                 return state
         return None
     
+    def reindex_peptide_from_pdb(self, pdb_file, first_residue_index=1):
+
+        def pdb2seq(pdb_file):
+
+            import warnings
+            from Bio import SeqIO
+            from Bio import BiopythonWarning
+
+            # Suppress all Biopython-specific warnings
+            with warnings.catch_warnings():
+                warnings.simplefilter('ignore', BiopythonWarning)
+                records = list(SeqIO.parse(pdb_file, 'pdb-atom'))
+                return str(records[0].seq)
     
+        def find_peptide(seq, peptide):
+            start_index = seq.find(peptide)
+            if start_index == -1:
+                return (-1, -1)
+            end_index = start_index + len(peptide) - 1
+            return (start_index, end_index)
+
+        pdb_sequence = pdb2seq(pdb_file)
+        a_middle_pep = self.states[0].peptides[int(len(self.states[0].peptides)/2)]
+        pdb_start, pdb_end= find_peptide(pdb_sequence, a_middle_pep.sequence)
+        index_offset = a_middle_pep.start - pdb_start - first_residue_index
+
+        for state in self.states:
+            for peptide in state.peptides:
+                peptide.start -= index_offset
+                peptide.end -= index_offset
+
+        print(f"Peptide reindexed with offset {-1*index_offset}")
+
 
 class ProteinState:
     def __init__(self, state_name):
@@ -300,28 +337,29 @@ class Peptide:
     
     @property
     def fit_results(self):
-
-       # print(f"Fitting {self.sequence}")
-        max_timepoint = max([tp.deut_time for tp in self.timepoints])
-        trialT = np.logspace(1.5, np.log10(max_timepoint*2), 1000)
-        
-        if self.timepoints[-1].num_d > 0.5:
-            x = [tp.deut_time for tp in self.timepoints]
-            y = [tp.num_d for tp in self.timepoints]
-            popt, pcov = curve_fit(f = exchange_fit, xdata = x, ydata = y,
-                    bounds = (0, [self.max_d, self.max_d, self.max_d, 1, .1, .01, self.max_d, self.max_d]),
-                    maxfev = 100000)
-            y_pred = exchange_fit(trialT, *popt)
-            perr = np.sqrt(np.diag(pcov))
-        else:
-            x = [tp.deut_time for tp in self.timepoints]
-            y = [tp.num_d for tp in self.timepoints]
-            popt, pcov = curve_fit(f = exchange_fit_low, xdata = x, ydata = y,
-                    bounds = (0, [self.max_d, self.max_d, .1, .01, self.max_d, self.max_d]),
-                    maxfev = 100000)
-            y_pred = exchange_fit_low(trialT, *popt)
-            perr = np.sqrt(np.diag(pcov))
-        return trialT, y_pred, popt, perr
+        try:
+            max_timepoint = max([tp.deut_time for tp in self.timepoints])
+            trialT = np.logspace(1.5, np.log10(max_timepoint*2), 1000)
+            
+            if self.timepoints[-1].num_d > 0.5:
+                x = [tp.deut_time for tp in self.timepoints]
+                y = [tp.num_d for tp in self.timepoints]
+                popt, pcov = curve_fit(f = exchange_fit, xdata = x, ydata = y,
+                        bounds = (0, [self.max_d, self.max_d, self.max_d, 1, .1, .01, self.max_d, self.max_d]),
+                        maxfev = 100000)
+                y_pred = exchange_fit(trialT, *popt)
+                perr = np.sqrt(np.diag(pcov))
+            else:
+                x = [tp.deut_time for tp in self.timepoints]
+                y = [tp.num_d for tp in self.timepoints]
+                popt, pcov = curve_fit(f = exchange_fit_low, xdata = x, ydata = y,
+                        bounds = (0, [self.max_d, self.max_d, .1, .01, self.max_d, self.max_d]),
+                        maxfev = 100000)
+                y_pred = exchange_fit_low(trialT, *popt)
+                perr = np.sqrt(np.diag(pcov))
+            return trialT, y_pred, popt, perr
+        except:
+            raise ValueError(f"Error in fitting peptide: {self.start}-{self.end} {self.sequence}")
 
     def get_deut(self, deut_time):
         for timepoint in self.timepoints:
@@ -400,7 +438,7 @@ def load_data_to_hdxmsdata(df, protein_name="LacI"):
     return hdxms_data
 
 
-class HDXStateCompare:
+class HDXStatePeptideCompares:
     def __init__(self, state1, state2):
         self.state1 = state1
         self.state2 = state2
@@ -474,4 +512,95 @@ class PeptideCompare:
     def get_deut_diff(self, timepoint):
         
         return self.peptide1.get_deut(timepoint) - self.peptide2.get_deut(timepoint)
+
+
+class HDXStateResidueCompares:
+    def __init__(self, resids, state1, state2):
+        self.resids = resids
+        self.residue_compares = []
+        self.state1 = state1
+        self.state2 = state2
+        
+    def add_all_compare(self):
+
+        for resid in self.resids:
+            res_compare = ResidueCompare(resid, self.state1, self.state2)
+            self.residue_compares.append(res_compare)   
+
+    def get_residue_compare(self, resid):
+        return self.residue_compares[self.resids.index(resid)]
+    
+
+class ResidueCompare:
+    def __init__(self, resid, state1, state2):
+        self.resid = resid
+        self.state1 = state1
+        self.state2 = state2
+
+    
+    @property
+    def compare_info(self):
+        return f'{self.state1.state_name}-{self.state2.state_name}: {self.resid}'
+    
+    
+    def find_peptides_containing_res(self, state):
+        res_containing_peptides = []
+        for pep in state.peptides:
+            if self.resid > pep.start and self.resid < pep.end:
+                res_containing_peptides.append(pep)
+        return res_containing_peptides
+
+    @property
+    def containing_peptides1(self):
+        return self.find_peptides_containing_res(self.state1)
+    
+    @property
+    def containing_peptides2(self):
+        return self.find_peptides_containing_res(self.state2)
+
+    @property
+    def common_timepoints(self):
+        tp1 = [tp.deut_time for pep1 in self.containing_peptides1 for tp in pep1.timepoints]
+        tp2 = [tp.deut_time for pep2 in self.containing_peptides2 for tp in pep2.timepoints]
+        all_timepoints = list(set(tp1 + tp2))
+        all_timepoints.sort()
+        
+        common_timepoints = []
+        for timepoint in all_timepoints:
+            a = [pep1.get_timepoint(timepoint) for pep1 in self.containing_peptides1 if pep1.get_timepoint(timepoint) is not None]
+            b = [pep2.get_timepoint(timepoint) for pep2 in self.containing_peptides2 if pep2.get_timepoint(timepoint) is not None]
+            if len(a) > 0 and len(b) > 0:
+                common_timepoints.append(timepoint)
+        return np.array(common_timepoints)
+
+    @property
+    def deut_diff(self):
+
+        if len(self.common_timepoints) == 0:
+            return np.nan
+        else:
+            deut_diff = []
+            for timepoint in self.common_timepoints:
+                    deut_diff.append(self.get_deut_diff(timepoint))
+            deut_diff = np.array(deut_diff)
+
+            return deut_diff
+
+    @property
+    def deut_diff_sum(self):
+        return np.sum(self.deut_diff)
+
+    @property
+    def deut_diff_avg(self):
+        return np.average(self.deut_diff)
+
+    def get_deut_diff(self, timepoint):
+        
+        
+        deut1_array = np.array([pep1.get_deut(timepoint) for pep1 in self.containing_peptides1 if pep1.get_deut(timepoint) is not None])
+        deut2_array = np.array([pep2.get_deut(timepoint) for pep2 in self.containing_peptides2 if pep2.get_deut(timepoint) is not None])
+
+        result = deut1_array.mean() - deut2_array.mean()
+        return result
+
 
