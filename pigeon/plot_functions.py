@@ -7,7 +7,7 @@ from matplotlib import cm
 import pandas as pd
 import seaborn as sns
 import numpy as np
-from data_processing import HDXStateResidueCompares, HDXStatePeptideCompares
+from data_processing import *
 
 
 font = {'family' : 'Arial', 'weight' : 'normal', 'size' : 36}
@@ -99,49 +99,97 @@ class UptakePlot:
         self.if_plot_fit = if_plot_fit
         self.figure = figure
         self.ax = ax
+        self.title = self.make_title()
         self.uptakeplot = self.make_uptakeplot()
 
+
     def make_uptakeplot(self):
+
+        plt.rcParams['legend.fontsize'] = 22
+
         if self.figure is None and self.ax is None:
             figure, ax = plt.subplots(1, 1, figsize=(9,8))
 
         scatter_shapes = ['o', 'v', '^', '<', '>', 's', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
 
-        for hdxms_data_index, hdxms_data in enumerate(self.hdxms_datas):
-            for state in hdxms_data.states:
-                
-                peptide = state.get_peptide(self.sequence)
+        sns.lineplot(data=self.hdxms_datas_df, 
+                     x='time', y='deut', hue='state', errorbar='sd', 
+                     err_style='bars', marker='o', linestyle=' ', markersize=18, alpha=0.5,
+                     ax=ax, palette=self.color_dict)
+        
+        # Plot the fit
+        if self.if_plot_fit:
+            for state_name in self.hdxms_datas_df.state.unique():
+                avg_peptide = self.get_average_peptide(state_name)
+                trialT, y_pred, popt, perr =  avg_peptide.fit_results
+                ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name])
 
-                if peptide is not None:
+        # set up the plot
+        ax.set_ylabel('# Deuterons')
+        ax.set_xlabel('Time (seconds)')
+        ax.set_xscale('log')
+        avg_peptide = self.get_average_peptide(self.hdxms_datas_df.state.unique()[0])
+        ax.set_ylim(0, avg_peptide.max_d*1.1)
+        #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+        ax.legend()
 
-                    ax.plot([tp.deut_time for tp in peptide.timepoints], 
-                            [tp.num_d for tp in peptide.timepoints], 
-                            scatter_shapes[hdxms_data_index],
-                            markersize = 18, alpha = 0.5, label =state.state_name, color=self.color_dict[state.state_name])
-
-                    # Plot the fit
-                    if self.if_plot_fit:
-                        trialT, y_pred, popt, perr =  peptide.fit_results
-                        ax.plot(trialT, y_pred, '-', color=self.color_dict[state.state_name])
-
-                    # set up the plot
-                    ax.set_ylabel('# Deuterons')
-                    ax.set_xlabel('Time (seconds)')
-                    ax.set_xscale('log')
-                    ax.set_ylim(0, peptide.max_d*1.1)
-                    #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
-                    ax.legend()
-
-                    self.title = f'{peptide.start}-{peptide.end} {peptide.sequence}'
-                    ax.set_title(self.title)
-                    plt.close()
+        ax.set_title(self.title)
+        plt.close()
 
         return figure
     
+    @property
+    def hdxms_datas_df(self):
+        
+        hdxms_datas_df = pd.DataFrame()
+
+        for hdxms_data_index, hdxms_data in enumerate(self.hdxms_datas):
+            hdxms_data_df = pd.DataFrame()
+            
+            for state in hdxms_data.states:
+                peptide = state.get_peptide(self.sequence)
+                
+                if peptide is not None:
+                    peptide_df_i = pd.DataFrame({
+                        'time': [tp.deut_time for tp in peptide.timepoints],
+                        'deut': [tp.num_d for tp in peptide.timepoints],
+                        'state': state.state_name
+                    })
+                    
+                    hdxms_data_df = pd.concat([hdxms_data_df, peptide_df_i], ignore_index=True)
+            
+            hdxms_data_df['data_set_index'] = hdxms_data_index
+            hdxms_datas_df = pd.concat([hdxms_datas_df, hdxms_data_df], ignore_index=True)
+        return hdxms_datas_df
+
+    def get_average_peptide(self, state_name):
+        grouped_df = self.hdxms_datas_df.groupby('state')
+        group = grouped_df.get_group(state_name)
+
+        final_group = group.groupby('time')
+        group_mean =final_group.mean(numeric_only=True).reset_index()
+        group_std =final_group.std(numeric_only=True).reset_index()
+
+        start = self.title.split(' ')[0].split('-')[0]
+        end = self.title.split(' ')[0].split('-')[1]
+        peptide = Peptide(self.sequence, start, end, f"averaged peptide: {state_name}")
+        for i in range(len(group_mean)):
+            timepoint = Timepoint(peptide, group_mean['time'][i], group_mean['deut'][i], group_std['deut'][i])
+            peptide.add_timepoint(timepoint)
+        
+        return peptide
+
+
     def make_title(self):
-        start = self.hdxms_datas[0].states[0].get_peptide(self.sequence).start
-        end = self.hdxms_datas[0].states[0].get_peptide(self.sequence).end
-        return f'{start}-{end} {self.sequence}'
+        for hdxms_data in self.hdxms_datas:
+            for state in hdxms_data.states:
+                try:
+                    start = state.get_peptide(self.sequence).start
+                    end = state.get_peptide(self.sequence).end
+                    return f'{start}-{end} {self.sequence}'
+                except AttributeError:
+                    pass
+        return f'Missing data for {self.sequence}'
     
     def make_color_dict(self, color_dict=None):
         if color_dict is None:
@@ -153,72 +201,36 @@ class UptakePlot:
             for i, state_name in enumerate(state_names):
                 color_dict[state_name] = colors[i]
         return color_dict
-    
-    def reindex_title_from_pdb(self, pdb_file, first_residue_index=1):
-        
-        def pdb2seq(pdb_file):
 
-            import warnings
-            from Bio import SeqIO
-            from Bio import BiopythonWarning
-
-            # Suppress all Biopython-specific warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', BiopythonWarning)
-                records = list(SeqIO.parse(pdb_file, 'pdb-atom'))
-                return str(records[0].seq)
-
-        def find_peptide(seq, peptide):
-            start_index = seq.find(peptide)
-            if start_index == -1:
-                return (-1, -1)
-            end_index = start_index + len(peptide) - 1
-            return (start_index, end_index)
-
-
-        pdb_seq = pdb2seq(pdb_file)
-        start, end = find_peptide(pdb_seq, self.sequence)
-        if start == -1:
-            raise ValueError(f'Peptide {self.sequence} not found in pdb file {pdb_file}')
-        
-        self.title = f'{start+first_residue_index}-{end+first_residue_index} {self.sequence}'
-
-        self.uptakeplot.axes[0].set_title(self.title)
-        
-    
     
 class UptakePlotsCollection:
-    def __init__(self, color_dict=None, if_plot_fit=True, if_reindex_title_from_pdb=False, pdb_file=None):
-        #self.hdxms_data = hdxms_data
+    def __init__(self, color_dict=None, if_plot_fit=True, pdb_file=None):
+        #self.hdxms_datas = hdxms_datas
         self.plots = []
         self.color_dict = color_dict
         self.if_plot_fit = if_plot_fit
-        self.if_reindex_title_from_pdb = if_reindex_title_from_pdb
         self.pdb_file = pdb_file
 
         
-    def add_plot(self, hdxms_data, sequence:str):
-        if self.if_reindex_title_from_pdb:
-            plot = UptakePlot([hdxms_data], sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
-            plot.reindex_title_from_pdb(self.pdb_file)
-        else:
-            plot = UptakePlot([hdxms_data], sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
+    def add_plot(self, hdxms_datas, sequence:str):
+        plot = UptakePlot(hdxms_datas, sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
         self.plots.append(plot)
         
-    def add_plot_all(self, hdxms_data):
+    def add_plot_all(self, hdxms_datas):
 
-        def get_unique_sequences(hdxms_data):
+        def get_unique_sequences(hdxms_datas):
             sequences = []
-            for state in hdxms_data.states:
-                for peptide in state.peptides:
-                    sequences.append((peptide.start, peptide.end, peptide.sequence))
+            for hdxms_data in hdxms_datas:
+                for state in hdxms_data.states:
+                    for peptide in state.peptides:
+                        sequences.append((peptide.start, peptide.end, peptide.sequence))
             sequences = list(set(sequences))
             sequences.sort()
             return sequences
         
-        unique_sequences = get_unique_sequences(hdxms_data)
+        unique_sequences = get_unique_sequences(hdxms_datas)
         for sequence in unique_sequences:
-            self.add_plot(hdxms_data, sequence[2])
+            self.add_plot(hdxms_datas, sequence[2])
 
     def save_plots(self, path):
         folder_name = os.path.join(path, 'uptake_plots')
@@ -254,8 +266,8 @@ def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):
 
     fig, ax = plt.subplots(figsize=(20,10))
 
-    leftbound = compare.peptide_compares[0].peptide1.start-10
-    rightbound = compare.peptide_compares[-1].peptide1.end+10
+    leftbound = compare.peptide_compares[0].peptide1_list[0].start-10
+    rightbound = compare.peptide_compares[-1].peptide1_list[0].end+10
     ax.set_xlim(leftbound,rightbound)
     ax.xaxis.set_ticks(np.arange(round(leftbound,-1), round(rightbound,-1), 10))
     ax.set_ylim(-5,110)
@@ -266,17 +278,17 @@ def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):
     norm = col.Normalize(vmin=-colorbar_max,vmax=colorbar_max)
 
     for i,peptide_compare in enumerate(compare.peptide_compares):
-        
-        rect = Rectangle((peptide_compare.peptide1.start, (i % 20) * 5 + ((i // 20) % 2) * 2.5), 
-                         peptide_compare.peptide1.end - peptide_compare.peptide1.start,
-                         4,
-                         fc=colormap(norm(peptide_compare.deut_diff_avg)))
-        
-        ax.add_patch(rect)
+        for peptide in peptide_compare.peptide1_list:
+            rect = Rectangle((peptide.start, (i % 20) * 5 + ((i // 20) % 2) * 2.5), 
+                             peptide.end - peptide.start,
+                             4,
+                             fc=colormap(norm(peptide_compare.deut_diff_avg)))
+            ax.add_patch(rect)
+
 
     fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm))
 
-    ax.set_title(compare.state1.state_name + '-' + compare.state2.state_name)
+    ax.set_title(compare.state1_list[0].state_name + '-' + compare.state2_list[0].state_name)
     fig.tight_layout()
     plt.close()
 
@@ -315,9 +327,13 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
     df = df.set_index('title')
     #sort the columns by timepoint
     df = df.reindex(sorted(df.columns), axis=1)
-    
+    #sort the rows by sequence
+    #import re
+    #df['Start'] = df.index.map(lambda x: int(re.search(r"(-?\d+)--?\d+ \w+", x).group(1)))
+    #df = df.sort_values(by=['Start']).drop('Start', axis=1)
+
     ax = sns.heatmap(df, cmap=colormap, linewidths=.75, vmin=-colorbar_max, vmax=colorbar_max)
-    ax.set_title(compare.state1.state_name + '-' + compare.state2.state_name)
+    ax.set_title(compare.state1_list[0].state_name + '-' + compare.state2_list[0].state_name)
     ax.set_ylabel('')
     fig.tight_layout()
     plt.close()
@@ -356,9 +372,9 @@ def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=
     
     if path is not None:
         if isinstance(compares, HDXStatePeptideCompares):
-            full_path = os.path.join(path, f'{compares.state1.state_name}-{compares.state2.state_name}_{colorbar_max}_pepcompare-pm.pse')
+            full_path = os.path.join(path, f'{compares.state1_list[0].state_name}-{compares.state2_list[0].state_name}_{colorbar_max}_pepcompare-pm.pse')
         elif isinstance(compares, HDXStateResidueCompares):
-            full_path = os.path.join(path, f'{compares.state1.state_name}-{compares.state2.state_name}_{colorbar_max}_rescompare-pm.pse')
+            full_path = os.path.join(path, f'{compares.state1_list[0].state_name}-{compares.state2_list[0].state_name}_{colorbar_max}_rescompare-pm.pse')
         cmd.save(full_path)
     else:
         raise ValueError('Please provide a path to save the pymol session')

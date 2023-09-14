@@ -71,25 +71,21 @@ class RangeList:
         result_df = result_df.sort_values(by="Start").reset_index(drop=True)
         return RangeList(range_df=result_df)
 
-
 def process_table(table):
     """Process a single table"""
     bigdf = pd.read_csv(table)
-    header = bigdf.iloc[:, 0:8].copy()  # create a copy
+    header = bigdf.iloc[:, 0:8].copy()
     header.columns = header.iloc[0]
     header.drop(0, inplace=True)
- 
 
     new_df = pd.DataFrame()
     tp_frames = bigdf.columns[8::8]
 
     for i, tp_frame in enumerate(tp_frames):
-        # pass a copy of header and bigdf to the function
-        new_df = process_tp_frame(header.copy(), bigdf.copy(), tp_frame, i, new_df)
+        new_df = process_tp_frame(header, bigdf, tp_frame, i, new_df)
 
-    #capitalise the state names and keep only the first 3 letters
     new_df['State'] = new_df['State'].str.upper().str[:3]
-    
+
     return new_df
 
 
@@ -99,19 +95,36 @@ def process_tp_frame(header, bigdf, tp_frame, i, new_df):
     tpdict.columns = tpdict.iloc[0]
     tpdict.drop(0, inplace=True)
     tpdict = pd.concat([header, tpdict], axis=1)
-    tpdict.loc[:, 'Deut Time (sec)'] = float(tp_frame.split('s')[0])
+    tpdict['Deut Time (sec)'] = float(tp_frame.split('s')[0])
     new_df = pd.concat([new_df, tpdict])
-    
-
 
     return new_df
 
+def process_cleaned_data(df):
+    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End'])['#D'].agg(['mean', 'std', 'count'])
+    df.reset_index(inplace=True)
+    df.rename(columns={'mean': '#D', 'std': 'Stddev', 'count': '#Rep', 'State': 'Protein State'}, inplace=True)
+
+    if 0 not in df['Deut Time (sec)'].unique():
+        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End']).sum()
+        tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
+        tp0s['#Rep'] = 1
+        df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
+
+    return df
 
 def load_ranges_file(ranges_file, newbigdf, exclude=False):
     """Load the ranges file"""
-
-    #rangeslist = pd.read_csv(ranges_file)
     rangeslist = RangeList(ranges_file).to_dataframe()
+
+    def exclude_ranges(newbigdf, rangeslist):
+        exc = pd.merge(newbigdf, rangeslist, how='left', indicator=True)
+        cleaned = exc[exc['_merge'] == 'left_only'].drop('_merge', axis=1)
+        return cleaned
+
+    def include_ranges(newbigdf, rangeslist):
+        cleaned = pd.merge(rangeslist, newbigdf)
+        return cleaned
 
     if exclude:
         cleaned = exclude_ranges(newbigdf, rangeslist)
@@ -126,101 +139,9 @@ def load_ranges_file(ranges_file, newbigdf, exclude=False):
     return cleaned
 
 
-
-def exclude_ranges(newbigdf, rangeslist):
-    """Exclude ranges from the data"""
-    exc = pd.merge(newbigdf, rangeslist, how='left', indicator=True)
-    cleaned = exc[exc['_merge']=='left_only'].drop('_merge', axis=1)
-
-    return cleaned
-
-def include_ranges(newbigdf, rangeslist):
-    """Include only the specified ranges in the data"""
-    cleaned = pd.merge(rangeslist, newbigdf)
-
-    return cleaned
-
-
-def get_unique_sorted(series):
-    return sorted(set(series))
-
-# Instead of converting to dict then back to list, directly use set to remove duplicates and sorted to sort
-#states = get_unique_sorted(cleaned['State'])
-#peptides = get_unique_sorted(cleaned['Sequence'])
-#timepoints = get_unique_sorted(cleaned['Deut Time (sec)'])
-
-def process_cleaned_data(df):
-    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End'])['#D'].agg(['mean','std', 'count'])
-    df.reset_index(inplace=True)
-    df.rename(columns={'mean':'#D', 'std': 'Stddev', 'count':'#Rep', 'State':'Protein State'}, inplace=True)
-
-    # Only add 0 timepoint if it doesn't exist
-    if 0 not in df['Deut Time (sec)'].unique():
-        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End']).sum()
-        tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
-        tp0s['#Rep'] = 1
-        df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
-
-    return df
-
-
-# Timepoints also needs to include 0 if it wasn't already included
-#timepoints = get_unique_sorted(cleaned['Deut Time (sec)'])
-
-def create_sequence_dict(df, states):
-    sequence_df = df.loc[(df['Protein State'] == states[0]) & (df['Deut Time (sec)'] == 0)][['Start', 'End', 'Sequence']].drop_duplicates().reset_index(drop=True)
-    states_dict = {state: sequence_df.copy() for state in states}
-    peptides_2 = create_peptides_list(sequence_df)
-
-    return states_dict, sequence_df['Start'], peptides_2
-
-#states_dict, first_res = create_sequence_dict(cleaned, states)
-
-def create_peptides_list(sequence_df):
-    return [f"{sequence_df['Start'][i]}-{sequence_df['End'][i]}- {sequence_df['Sequence'][i]}" for i in range(len(sequence_df))]
-
-#peptides_2 = create_peptides_list(sequence_df)
-
-
-
-def load_data(args):
-    newbigdf = pd.DataFrame()
-
-    # Process all tables
-    for table in args.table:
-        newbigdf = pd.concat([newbigdf, process_table(table)])
-
-    # Convert columns to the appropriate data types
-    newbigdf['Start'] = newbigdf['Start'].apply(np.int64)
-    newbigdf['End'] = newbigdf['End'].apply(np.int64)
-    newbigdf['#D'] = newbigdf['#D'].apply(float)
-
-    return newbigdf
-
-
-def clean_data(args, newbigdf):
-    cleaned = load_ranges_file(args.ranges, newbigdf, args.exclude)
-    cleaned = process_cleaned_data(cleaned)
-
-    states = list(dict.fromkeys(cleaned['Protein State']))
-    peptides = list(dict.fromkeys(cleaned['Sequence']))
-    timepoints = list(dict.fromkeys(cleaned['Deut Time (sec)']))
-
-    states_dict, first_res, peptides_2 = create_sequence_dict(cleaned, states)
-
-    return cleaned, states, peptides, timepoints, states_dict, first_res, peptides_2
-
-
-def fit_data(cleaned, states, states_dict, peptides, timepoints):
-    # Compile the exchange information
-    peptide_exchange_dict, stdev_dict_dict = compile_exchange_info(
-        cleaned, states, states_dict)
-
-    # Fit the exchange functions
-    trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict = fit_functions(
-        peptides, peptide_exchange_dict, timepoints)
-
-    return peptide_exchange_dict, stdev_dict_dict, trialT, peptide_fit_dict, peptide_params_dict, peptide_err_dict
+class HDXMSDataCollection:
+    def __init__(self, hdxms_data_list):
+        self.hdxms_data_list = hdxms_data_list
 
 
 class HDXMSData:
@@ -337,15 +258,18 @@ class Peptide:
     
     @property
     def fit_results(self):
+
         try:
             max_timepoint = max([tp.deut_time for tp in self.timepoints])
-            trialT = np.logspace(1.5, np.log10(max_timepoint*2), 1000)
+            trialT = np.logspace(1.5, np.log10(max_timepoint*2), 100)
             
             if self.timepoints[-1].num_d > 0.5:
                 x = [tp.deut_time for tp in self.timepoints]
                 y = [tp.num_d for tp in self.timepoints]
                 popt, pcov = curve_fit(f = exchange_fit, xdata = x, ydata = y,
+                        #bounds = (0, [self.max_d, self.max_d, self.max_d, 1, .1, .01, self.max_d, self.max_d]),
                         bounds = (0, [self.max_d, self.max_d, self.max_d, 1, .1, .01, self.max_d, self.max_d]),
+                        #bounds = (0, [np.inf, np.inf, self.max_d]),
                         maxfev = 100000)
                 y_pred = exchange_fit(trialT, *popt)
                 perr = np.sqrt(np.diag(pcov))
@@ -367,6 +291,12 @@ class Peptide:
                 return timepoint.num_d
         return None
     
+    def get_deut_percent(self, deut_time):
+        for timepoint in self.timepoints:
+            if timepoint.deut_time == deut_time:
+                return timepoint.d_percent
+        return None
+    
     def get_timepoint(self, deut_time):
         for timepoint in self.timepoints:
             if timepoint.deut_time == deut_time:
@@ -382,10 +312,12 @@ def exchange_fit_low(x, b, c, e, f, g, max_d):
 
 
 class Timepoint:
-    def __init__(self, deut_time, num_d, stddev):
+    def __init__(self, peptide, deut_time, num_d, stddev):
+        self.peptide = peptide
         self.deut_time = deut_time
         self.num_d = num_d
         self.stddev = stddev
+        self.d_percent = num_d / peptide.max_d
 
 
 def load_data_to_hdxmsdata(df, protein_name="LacI"):
@@ -423,11 +355,14 @@ def load_data_to_hdxmsdata(df, protein_name="LacI"):
         
         # If peptide does not exist, create and add to ProteinState
         if not peptide:
+            # skip if peptide is less than 4 residues
+            if len(row['Sequence']) < 4:
+                continue
             peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state)
             protein_state.add_peptide(peptide)
         
         # Add timepoint data to peptide
-        timepoint = Timepoint(row['Deut Time (sec)'], row['#D'], row['Stddev'])
+        timepoint = Timepoint(peptide, row['Deut Time (sec)'], row['#D'], row['Stddev'])
         
         # if timepoint has no data, skip
         if np.isnan(timepoint.num_d):
@@ -439,26 +374,29 @@ def load_data_to_hdxmsdata(df, protein_name="LacI"):
 
 
 class HDXStatePeptideCompares:
-    def __init__(self, state1, state2):
-        self.state1 = state1
-        self.state2 = state2
+    def __init__(self, state1_list, state2_list):
+        self.state1_list = state1_list
+        self.state2_list = state2_list
         self.peptide_compares = []
     
     @property
     def common_sequences(self):
-        common_sequences = []
-        for peptide in self.state1.peptides:
-            if self.state2.get_peptide(peptide.sequence) is not None:
-                common_sequences.append(peptide.sequence)
+
+        peptides1 = set([peptide.sequence for state1 in self.state1_list for peptide in state1.peptides])
+        peptides2 = set([peptide.sequence for state2 in self.state2_list for peptide in state2.peptides])
+        common_sequences = peptides1.intersection(peptides2)                
         return common_sequences
 
     def add_all_compare(self):
+        import re
+        peptide_compares = []
         for sequence in self.common_sequences:
-            peptide1 = self.state1.get_peptide(sequence)
-            peptide2 = self.state2.get_peptide(sequence)
-            peptide_compare = PeptideCompare(peptide1, peptide2)
-            self.peptide_compares.append(peptide_compare)
-
+            peptide1_list = [state1.get_peptide(sequence) for state1 in self.state1_list]
+            peptide2_list = [state2.get_peptide(sequence) for state2 in self.state2_list]
+            peptide_compare = PeptideCompare(peptide1_list, peptide2_list)
+            peptide_compares.append(peptide_compare)
+        self.peptide_compares = sorted(peptide_compares, key=lambda x: int(re.search(r"(-?\d+)--?\d+ \w+", x.compare_info).group(1)))
+    
     def to_dataframe(self):
         df = pd.DataFrame()
         for peptide_compare in self.peptide_compares:
@@ -470,25 +408,32 @@ class HDXStatePeptideCompares:
         return df
 
 class PeptideCompare:
-    def __init__(self, peptide1, peptide2):
-        self.peptide1 = peptide1
-        self.peptide2 = peptide2
+    def __init__(self, peptide1_list, peptide2_list):
+        self.peptide1_list = [peptide for peptide in peptide1_list if peptide is not None]
+        self.peptide2_list = [peptide for peptide in peptide2_list if peptide is not None]
         
         #if not same sequence, raise error
-        if self.peptide1.sequence != self.peptide2.sequence:
+        set_1 = set([peptide.sequence for peptide in self.peptide1_list])
+        set_2 = set([peptide.sequence for peptide in self.peptide1_list])
+        if set_1 != set_2:
             raise ValueError('Cannot compare peptides with different sequences')
     
     @property
     def compare_info(self):
-        return f'{self.peptide1.protein_state.state_name}-{self.peptide2.protein_state.state_name}: {self.peptide1.start}-{self.peptide1.end} {self.peptide1.sequence}'
+        peptide1 = self.peptide1_list[0]
+        peptide2 = self.peptide2_list[0]
+
+        return f'{peptide1.protein_state.state_name}-{peptide2.protein_state.state_name}: {peptide1.start}-{peptide1.end} {peptide1.sequence}'
     
     
     @property
     def common_timepoints(self):
-        common_timepoints = []
-        for tp in self.peptide1.timepoints:
-            if self.peptide2.get_timepoint(tp.deut_time) is not None:
-                common_timepoints.append(tp.deut_time)
+
+        timepoints1 = set([tp.deut_time for peptide1 in self.peptide1_list for tp in peptide1.timepoints if tp is not None])
+        timepoints2 = set([tp.deut_time for peptide2 in self.peptide2_list for tp in peptide2.timepoints if tp is not None])
+        common_timepoints = list(timepoints1.intersection(timepoints2))
+        common_timepoints.sort()
+
         return np.array(common_timepoints)
 
     @property
@@ -498,7 +443,7 @@ class PeptideCompare:
         for timepoint in self.common_timepoints:
             deut_diff.append(self.get_deut_diff(timepoint))
 
-        deut_diff = np.array(deut_diff)/self.peptide1.max_d
+        deut_diff = np.array(deut_diff)
         return deut_diff
 
     @property
@@ -510,67 +455,79 @@ class PeptideCompare:
         return np.average(self.deut_diff)
 
     def get_deut_diff(self, timepoint):
+
+        deut1_array = np.array([pep1.get_deut_percent(timepoint) for pep1 in self.peptide1_list if pep1.get_deut_percent(timepoint) is not None])
+        deut2_array = np.array([pep2.get_deut_percent(timepoint) for pep2 in self.peptide2_list if pep2.get_deut_percent(timepoint) is not None])
         
-        return self.peptide1.get_deut(timepoint) - self.peptide2.get_deut(timepoint)
+        result = deut1_array.mean() - deut2_array.mean()
+        return result
 
 
 class HDXStateResidueCompares:
-    def __init__(self, resids, state1, state2):
+    def __init__(self, resids, state1_list, state2_list):
         self.resids = resids
         self.residue_compares = []
-        self.state1 = state1
-        self.state2 = state2
+        self.state1_list = state1_list
+        self.state2_list = state2_list
         
     def add_all_compare(self):
 
         for resid in self.resids:
-            res_compare = ResidueCompare(resid, self.state1, self.state2)
-            self.residue_compares.append(res_compare)   
+            res_compare = ResidueCompare(resid, self.state1_list, self.state2_list)
+            if not res_compare.if_empty:
+                self.residue_compares.append(res_compare)   
 
     def get_residue_compare(self, resid):
         return self.residue_compares[self.resids.index(resid)]
     
 
 class ResidueCompare:
-    def __init__(self, resid, state1, state2):
+    def __init__(self, resid, state1_list, state2_list):
         self.resid = resid
-        self.state1 = state1
-        self.state2 = state2
+        self.state1_list = state1_list
+        self.state2_list = state2_list
 
     
+    #@property
+    #def resname(self):
+    #   a_peptide = self.containing_peptides1[0]
+    #    return a_peptide.sequence[a_peptide.start - self.resid]
+
     @property
     def compare_info(self):
-        return f'{self.state1.state_name}-{self.state2.state_name}: {self.resid}'
+        return f'{self.state1_list[0].state_name}-{self.state2_list[0].state_name}: {self.resid}'
     
-    
-    def find_peptides_containing_res(self, state):
+    def find_peptides_containing_res(self, state_list):
         res_containing_peptides = []
-        for pep in state.peptides:
-            if self.resid > pep.start and self.resid < pep.end:
-                res_containing_peptides.append(pep)
+        for state in state_list:
+            for pep in state.peptides:
+                if self.resid > pep.start and self.resid < pep.end:
+                    res_containing_peptides.append(pep)
         return res_containing_peptides
 
     @property
     def containing_peptides1(self):
-        return self.find_peptides_containing_res(self.state1)
+        return self.find_peptides_containing_res(self.state1_list)
     
     @property
     def containing_peptides2(self):
-        return self.find_peptides_containing_res(self.state2)
+        return self.find_peptides_containing_res(self.state2_list)
+
+
+    @property
+    def if_empty(self):
+        if len(self.containing_peptides1) == 0 or len(self.containing_peptides2) == 0:
+            return True
+        else:
+            return False
 
     @property
     def common_timepoints(self):
-        tp1 = [tp.deut_time for pep1 in self.containing_peptides1 for tp in pep1.timepoints]
-        tp2 = [tp.deut_time for pep2 in self.containing_peptides2 for tp in pep2.timepoints]
-        all_timepoints = list(set(tp1 + tp2))
-        all_timepoints.sort()
-        
-        common_timepoints = []
-        for timepoint in all_timepoints:
-            a = [pep1.get_timepoint(timepoint) for pep1 in self.containing_peptides1 if pep1.get_timepoint(timepoint) is not None]
-            b = [pep2.get_timepoint(timepoint) for pep2 in self.containing_peptides2 if pep2.get_timepoint(timepoint) is not None]
-            if len(a) > 0 and len(b) > 0:
-                common_timepoints.append(timepoint)
+        tp1 = set([tp.deut_time for pep1 in self.containing_peptides1 for tp in pep1.timepoints if tp is not None])
+        tp2 = set([tp.deut_time for pep2 in self.containing_peptides2 for tp in pep2.timepoints if tp is not None])
+        common_timepoints = list(tp1.intersection(tp2))
+        common_timepoints.sort()
+
         return np.array(common_timepoints)
 
     @property
@@ -597,8 +554,8 @@ class ResidueCompare:
     def get_deut_diff(self, timepoint):
         
         
-        deut1_array = np.array([pep1.get_deut(timepoint) for pep1 in self.containing_peptides1 if pep1.get_deut(timepoint) is not None])
-        deut2_array = np.array([pep2.get_deut(timepoint) for pep2 in self.containing_peptides2 if pep2.get_deut(timepoint) is not None])
+        deut1_array = np.array([pep1.get_deut_percent(timepoint) for pep1 in self.containing_peptides1 if pep1.get_deut_percent(timepoint) is not None])
+        deut2_array = np.array([pep2.get_deut_percent(timepoint) for pep2 in self.containing_peptides2 if pep2.get_deut_percent(timepoint) is not None])
 
         result = deut1_array.mean() - deut2_array.mean()
         return result
