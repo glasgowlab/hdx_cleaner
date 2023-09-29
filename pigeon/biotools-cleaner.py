@@ -233,6 +233,17 @@ plt.hist(topscores['Score'],log=True, bins=100, range=[0,xmax])
 print('% 0: ' + str(100 * topscores['Score'].value_counts()[0] / len(topscores)))
 plt.savefig(plots + '/hist-scores-topscores.png')
 
+# scatterplot of topscore data
+figure, (ax1) = plt.subplots(1, 1, figsize=(5, 5))
+plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
+plt.scatter(topscores['Meas. M/z'].apply(float), topscores['Dev.(ppm)'].apply(float), c=topscores['Score'],
+            norm=colors.LogNorm(vmin=1, vmax=xmax))
+plt.colorbar(label='Score')
+plt.xlabel('M/z')
+plt.ylabel('deviation (ppm)')
+plt.ylim(-30, 30)
+plt.savefig(plots + '/scatter-topscore.png')
+
 print()
 
 flagged = pd.DataFrame()
