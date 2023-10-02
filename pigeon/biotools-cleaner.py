@@ -99,15 +99,15 @@ xmax = max(data['Score'])
 
 # TEMP scatterplot of full dataset
 
-def floathelper(n):
-    if n == '-':
-        return 0
-    return float(n.strip())
-figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-data['MSMS Cov.(%)'] = data['MSMS Cov.(%)'].apply(floathelper)
-plt.yscale("log")
-plt.scatter(data['MSMS Cov.(%)'], data['Score'].apply(float)+1)
-plt.savefig(plots + '/scatter-score-coverage.png')
+# def floathelper(n):
+#     if n == '-':
+#         return 0
+#     return float(n.strip())
+# figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
+# data['MSMS Cov.(%)'] = data['MSMS Cov.(%)'].apply(floathelper)
+# plt.yscale("log")
+# plt.scatter(data['MSMS Cov.(%)'], data['Score'].apply(float)+1)
+# plt.savefig(plots + '/scatter-score-coverage.png')
 
 
 
