@@ -1,10 +1,11 @@
-Command line inputs:
+Command line inputs (optional unless specified):
 
 --t, --table: Path(s) to input csv. Required
+--b, --batch: 
 --o, --out: path to output csv. Default: 'CLEAN.csv'
 --p, --plots: directory for output plots. Default: './csvplots'
 --ov, --overlap: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'
---r, --rangeslist: path to output rangeslist.
+--r, --rangeslist: path to output rangeslist, if any.
 --RTC: RT cutoff for duplicate peptides. Default: 0.5
 --MZC: m/z cutoff for duplicate peptides. Default: 0.1
 --scoreC: Score threshold for provisional cut for trendline fit. Default: 150
@@ -41,3 +42,9 @@ in --plots:
 		/hist-ppms.png
 
 Example input: python biotools-cleaner.py --t pool-1.csv pool-2.csv pool-3.csv --p csvplots --ov keep --o keep-pooled.csv --r rangeslist.csv --MZC 0.05 --RTC 0.25 --scoreC 200 --ppmC 5 --maxfev 2000
+Alternative input: python biotools-cleaner.py --b batch-list.txt --p csvplots --ov select --o select-pooled.csv
+
+Form of fit function is an inverse function, with asymptote <= min(all m/z in data) - 100D/e. This is heuristic, based on experience with our mass spectrometer. Users should use any fit function that well describes their calibration error.
+
+Format for input/output csv:
+	
