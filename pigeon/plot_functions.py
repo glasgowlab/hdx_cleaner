@@ -342,7 +342,8 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
     return fig
 
 
-def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=None, path=None):
+def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=None, path=None,
+                              save_pdb=False):
 
     rgb_df = gen_rgb_df(compares, colorbar_max, colormap)
 
@@ -379,6 +380,32 @@ def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=
         cmd.save(full_path)
     else:
         raise ValueError('Please provide a path to save the pymol session')
+    
+    if isinstance(compares, HDXStateResidueCompares):
+        if save_pdb:
+            pdb_full_path = os.path.join(path, f'{compares.state1_list[0].state_name}-{compares.state2_list[0].state_name}_rescompare-pm.pdb')
+            save_pdb = plot_on_pdb(pdb_file, compares, pdb_full_path)
+
+
+
+def plot_on_pdb(pdb, residue_compares, path=None):
+
+    import MDAnalysis
+
+    u = MDAnalysis.Universe(pdb)
+    u.add_TopologyAttr('tempfactors')  # add empty attribute for all atoms
+    protein = u.select_atoms('protein')  # select protein atoms
+    
+    for res_compare in residue_compares.residue_compares:
+        res_id = res_compare.resid
+        res = protein.select_atoms('resnum {}'.format(res_id))
+        res.tempfactors = res_compare.deut_diff_avg
+
+    if path is None:
+        raise ValueError('Please provide a path to save the pymol session')
+    else:
+        u.atoms.write(path)
+
     
 
 def gen_rgb_df(compare, colorbar_max, colormap="RdBu"):
