@@ -34,12 +34,15 @@ def formatfill(data):
     return (len(data), np.mean(data['Score']), 100 * data['Score'].value_counts()[0] / len(data))
 
 def redflag(topscores, r):
+
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical and nonoverlapping
     RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
     MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
     notsame = (topscores['Sequence'] != r['Sequence'])
+    protein_name = (topscores['protein_name'] != r['protein_name'])
     nonoverlapping = (topscores['Start'].apply(int) + skip_res > int(r['End'])) | (int(r['Start']) + skip_res > topscores['End'].apply(int))
-    return RTflag & MZflag & notsame & nonoverlapping
+
+    return RTflag & MZflag & notsame & (nonoverlapping|protein_name)
 
 def yellowflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical but overlapping
@@ -49,10 +52,43 @@ def yellowflag(topscores, r):
     overlapping = (topscores['Start'].apply(int) + skip_res <= int(r['End'])) | (int(r['Start']) + skip_res <= topscores['End'].apply(int))
     return RTflag & MZflag & notsame & overlapping
 
+def parse_batch(input_path: os.path) -> pd.DataFrame:
+    data = pd.DataFrame()
+    if not os.path.exists(input_path):
+        print("Bad batch input location. Please check your file path")
+        exit(1)
+    if not os.path.isfile(input_path):
+        print("Bad batch input location. Please make sure you use a file and not directory")
+        exit(1)
+    batch_type = {}
+    with open(input_path, "r") as inputBatch:
+        for x, line in enumerate(inputBatch):
+            line = line.strip()
+            if line[0] == "#":
+                continue
+            batch_type[line.split(",")[0]] = line.split(",")[1].strip().split(";")
+    for protein in batch_type:
+        for file in batch_type[protein]:
+            if not os.path.exists(file):
+                print("Bad batch input location. Please check your batch input paths for " + protein)
+                exit(1)
+            if not os.path.isfile(file):
+                print("Bad batch input location. Please check your batch input paths for " + protein)
+                exit(1)
+            current_file_data = pd.read_csv(file)
+            current_file_data["protein_name"]=protein
+            data = pd.concat([data, current_file_data])
+    return data
+
+
+
+
 # CMD LINE ARGS CODE
 
 parser = argparse.ArgumentParser(description='Biotools CSV cleaner: pool csvs and disambiguate duplicates')
-parser.add_argument('--t', '--table', dest='table', help="paths to input csvs", nargs='+', required=True)
+group = parser.add_mutually_exclusive_group(required=True)
+group.add_argument('--t', '--table', dest='table', help="paths to input csvs", nargs='+', default = "")
+group.add_argument('--batch', dest='batch', type=str, help='path for .txt for batching',default = "")
 parser.add_argument('--o', '--out', dest='out', help="path to output csv")
 parser.add_argument('--p', '--plots', dest='plots', help="directory for output plots")
 parser.add_argument('--ov', '--overlap', dest='overlap', help="how to treat overlapping duplicates: keep/drop/select?")
@@ -84,8 +120,14 @@ if not os.path.isdir(plots):
 # FILE IN
 
 data = pd.DataFrame()
-for table in args.table:
-    data = pd.concat([data, pd.read_csv(table)])
+if args.table:
+    for table in args.table:
+        data = pd.concat([data, pd.read_csv(table)])
+else:
+    data = parse_batch(args.batch)
+
+
+
 
 data.dropna(inplace=True, subset=['Int.'])
 data = data.loc[data['Tree hierarchy'] != 'no peak']
@@ -206,6 +248,7 @@ cleaned['Start'] = cleaned['Range'].str.split(expand=True)[0]
 cleaned['End'] = cleaned['Range'].str.split(expand=True)[2]
 cleaned['Start'] = cleaned['Start'].apply(int)
 cleaned['End'] = cleaned['End'].apply(int)
+
 
 grouped = cleaned.groupby(['Sequence', 'z'])
 topscores = pd.DataFrame(columns=cleaned.columns)

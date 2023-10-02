@@ -4,6 +4,98 @@ from scipy.optimize import curve_fit
 from utils import compile_exchange_info, fit_functions
 
 
+def read_hdx_tables(tables, ranges, exclude=False):
+    newbigdf = pd.DataFrame()
+    cleaned_list = []
+    
+    # Process all tables
+    for table, range_file in zip(tables, ranges):
+        newbigdf = process_table(table)
+
+        # Convert columns to the appropriate data types
+        newbigdf['Start'] = newbigdf['Start'].apply(np.int64)
+        newbigdf['End'] = newbigdf['End'].apply(np.int64)
+        newbigdf['#D'] = newbigdf['#D'].apply(float)
+
+        cleaned = load_ranges_file(range_file, newbigdf, exclude)
+        cleaned_list.append(cleaned)
+
+    cleaned = pd.concat(cleaned_list, ignore_index=True)
+    cleaned = clean_data_df(cleaned)
+    
+    return cleaned
+
+
+def process_table(table):
+    """Process a single table"""
+    bigdf = pd.read_csv(table)
+    header = bigdf.iloc[:, 0:8].copy()
+    header.columns = header.iloc[0]
+    header.drop(0, inplace=True)
+
+    new_df = pd.DataFrame()
+    tp_frames = bigdf.columns[8::8]
+
+    for i, tp_frame in enumerate(tp_frames):
+        new_df = process_tp_frame(header, bigdf, tp_frame, i, new_df)
+
+    new_df['State'] = new_df['State'].str.upper().str[:3]
+
+    return new_df
+
+
+def process_tp_frame(header, bigdf, tp_frame, i, new_df):
+    """Process a single tp_frame"""
+    tpdict = bigdf.iloc[:, 8+8*i:16+8*i].copy()
+    tpdict.columns = tpdict.iloc[0]
+    tpdict.drop(0, inplace=True)
+    tpdict = pd.concat([header, tpdict], axis=1)
+    tpdict['Deut Time (sec)'] = float(tp_frame.split('s')[0])
+    new_df = pd.concat([new_df, tpdict])
+
+    return new_df
+
+
+def clean_data_df(df):
+    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End'])['#D'].agg(['mean', 'std', 'count'])
+    df.reset_index(inplace=True)
+    df.rename(columns={'mean': '#D', 'std': 'Stddev', 'count': '#Rep', 'State': 'Protein State'}, inplace=True)
+
+    if 0 not in df['Deut Time (sec)'].unique():
+        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End']).sum()
+        tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
+        tp0s['#Rep'] = 1
+        df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
+
+    return df
+
+
+def load_ranges_file(ranges_file, newbigdf, exclude=False):
+    """Load the ranges file"""
+    rangeslist = RangeList(ranges_file).to_dataframe()
+
+    def exclude_ranges(newbigdf, rangeslist):
+        exc = pd.merge(newbigdf, rangeslist, how='left', indicator=True)
+        cleaned = exc[exc['_merge'] == 'left_only'].drop('_merge', axis=1)
+        return cleaned
+
+    def include_ranges(newbigdf, rangeslist):
+        cleaned = pd.merge(rangeslist, newbigdf)
+        return cleaned
+
+    if exclude:
+        cleaned = exclude_ranges(newbigdf, rangeslist)
+        print('rangeslist excluded !')
+    elif rangeslist is not None:
+        cleaned = include_ranges(newbigdf, rangeslist)
+        print('rangeslist included !')
+    else:
+        cleaned = newbigdf.drop_duplicates()
+        print('no rangeslist !')
+
+    return cleaned
+
+
 class RangeList:
     def __init__(self, range_list_file=None, range_df=None):
 
@@ -70,73 +162,6 @@ class RangeList:
         result_df = result_df.astype(int)
         result_df = result_df.sort_values(by="Start").reset_index(drop=True)
         return RangeList(range_df=result_df)
-
-def process_table(table):
-    """Process a single table"""
-    bigdf = pd.read_csv(table)
-    header = bigdf.iloc[:, 0:8].copy()
-    header.columns = header.iloc[0]
-    header.drop(0, inplace=True)
-
-    new_df = pd.DataFrame()
-    tp_frames = bigdf.columns[8::8]
-
-    for i, tp_frame in enumerate(tp_frames):
-        new_df = process_tp_frame(header, bigdf, tp_frame, i, new_df)
-
-    new_df['State'] = new_df['State'].str.upper().str[:3]
-
-    return new_df
-
-
-def process_tp_frame(header, bigdf, tp_frame, i, new_df):
-    """Process a single tp_frame"""
-    tpdict = bigdf.iloc[:, 8+8*i:16+8*i].copy()
-    tpdict.columns = tpdict.iloc[0]
-    tpdict.drop(0, inplace=True)
-    tpdict = pd.concat([header, tpdict], axis=1)
-    tpdict['Deut Time (sec)'] = float(tp_frame.split('s')[0])
-    new_df = pd.concat([new_df, tpdict])
-
-    return new_df
-
-def process_cleaned_data(df):
-    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End'])['#D'].agg(['mean', 'std', 'count'])
-    df.reset_index(inplace=True)
-    df.rename(columns={'mean': '#D', 'std': 'Stddev', 'count': '#Rep', 'State': 'Protein State'}, inplace=True)
-
-    if 0 not in df['Deut Time (sec)'].unique():
-        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End']).sum()
-        tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
-        tp0s['#Rep'] = 1
-        df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
-
-    return df
-
-def load_ranges_file(ranges_file, newbigdf, exclude=False):
-    """Load the ranges file"""
-    rangeslist = RangeList(ranges_file).to_dataframe()
-
-    def exclude_ranges(newbigdf, rangeslist):
-        exc = pd.merge(newbigdf, rangeslist, how='left', indicator=True)
-        cleaned = exc[exc['_merge'] == 'left_only'].drop('_merge', axis=1)
-        return cleaned
-
-    def include_ranges(newbigdf, rangeslist):
-        cleaned = pd.merge(rangeslist, newbigdf)
-        return cleaned
-
-    if exclude:
-        cleaned = exclude_ranges(newbigdf, rangeslist)
-        print('rangeslist excluded !')
-    elif rangeslist is not None:
-        cleaned = include_ranges(newbigdf, rangeslist)
-        print('rangeslist included !')
-    else:
-        cleaned = newbigdf.drop_duplicates()
-        print('no rangeslist !')
-
-    return cleaned
 
 
 class HDXMSDataCollection:
@@ -348,7 +373,7 @@ class Timepoint:
         self.d_percent = num_d / peptide.max_d
 
 
-def load_data_to_hdxmsdata(df, protein_name="LacI"):
+def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
     ''' 
     Load data from dataframe to HDXMSData object
 
