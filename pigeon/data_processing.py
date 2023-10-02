@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
@@ -147,6 +149,7 @@ class HDXMSDataCollection:
 class HDXMSData:
     def __init__(self, protein_name):
         self.protein_name = protein_name
+        self.ms_data: str = ms_data
         self.states = []
 
     def add_state(self, state):
@@ -159,6 +162,33 @@ class HDXMSData:
     
     def load_protein_sequence(self, sequence):
         self.protein_sequence = sequence
+
+    # TODO: verify directory walk, test on full data for a protein and test plotting
+    def initialize_ms_data(self, ms_data: str):
+        # walks top down to initialize ms data given folder location (don't end with a /)
+        for state in self.states:
+            peptide_names: [str] = []
+            for (dir_path, dir_names, file_names) in os.walk(ms_data + "/" + state.state_name):
+                peptide_names = dir_names
+                # don't look inside any subdirectory
+                break
+            for peptide in state.peptides:
+                folder = ""
+                for name in peptide_names:
+                    if peptide.sequence in name:
+                        folder = name
+                        break
+
+                for timepoint in peptide.timepoints:
+                    tp = timepoint.deut_time
+                    for (dir_path, dir_names, file_names) in os.walk(ms_data + "/" + state.state_name + "/" + folder):
+                        for name in file_names:
+                            if tp == 0:
+                                if "Non-D" in name:
+                                    timepoint.ms_data.append(timepoint.initialize_ms(name))
+                            else:
+                                if str(tp) in name:
+                                    timepoint.ms_data.append(timepoint.initialize_ms(name))
 
     @property
     def num_states(self):
@@ -346,6 +376,12 @@ class Timepoint:
         self.num_d = num_d
         self.stddev = stddev
         self.d_percent = num_d / peptide.max_d
+        self.mass_spec: [pd.DataFrame] = []
+
+    # TODO: verify mass spec plot
+    def initialize_ms(self, filename):
+        self.mass_spec.append(pd.read_csv(filename))
+
 
 
 def load_data_to_hdxmsdata(df, protein_name="LacI"):

@@ -401,3 +401,46 @@ def gen_rgb_df(compare, colorbar_max, colormap="RdBu"):
     df['b'] = rgb[:, 2]
 
     return df
+
+# TODO: verify on full directory, styling
+def ms_data_plot(peptide: Peptide):
+    num_plots: int = 0
+    for timepoint in peptide.timepoints:
+        num_plots = num_plots + len(timepoint.mass_spec)
+
+    fig, axes = plt.subplots(num_plots)
+    i: int = 0
+    for timepoint in peptide.timepoints:
+        for charge_state in timepoint.mass_spec:
+            axes[i].scatter(charge_state.iloc[:, 0], charge_state.iloc[:, 1])
+            i = i + 1
+
+    plt.show()
+
+
+# TODO: styling
+# - pranav
+def ms_data_plot_file(filename: str):
+    num_plots: int = 0
+    files = []
+    for (dirpath, dirnames, filenames) in os.walk(filename):
+        num_plots = len(filenames)
+        print(filenames)
+        files = filenames
+        break
+
+    data: [pd.DataFrame] = []
+    for file in files:
+        data.append(pd.read_csv(filename+"/" + file))
+
+    fig, axes = plt.subplots(num_plots)
+    i: int = 0
+    for timepoint in data:
+        axes[i].plot(timepoint.iloc[:, 0], timepoint.iloc[:, 1])
+        i = i + 1
+    fig.tight_layout()
+    plt.xlabel("m/z")
+    plt.ylabel("Count")
+    plt.show()
+
+ms_data_plot_file('/Users/pranav/programming/PIGEON/example/0012-0017-YAGVSY')
