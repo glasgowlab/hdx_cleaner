@@ -285,6 +285,34 @@ class Peptide:
         except:
             raise ValueError(f"Error in fitting peptide: {self.start}-{self.end} {self.sequence}")
 
+    def fit_hdx_stats(self, start = {'a': None, 'b': 0.001, 'd':0, 'p': 1}):
+
+        if start['a'] is None:
+            start['a'] = self.max_d
+    
+        max_timepoint = max([tp.deut_time for tp in self.timepoints])
+        trialT = np.logspace(1.5, np.log10(max_timepoint*2), 100)
+
+        x = [tp.deut_time for tp in self.timepoints]
+        y = [tp.num_d for tp in self.timepoints]
+
+        def model_func(timepoint, a, b, p, d):
+            return a * (1 - np.exp(-b * (timepoint ** p))) + d
+        
+        try:
+            popt, pcov = curve_fit(model_func, x, y, p0=list(start.values()), maxfev=100000, method='lm')
+            y_pred = model_func(trialT, *popt)
+            perr = np.sqrt(np.diag(pcov))
+        except Exception as e:
+            print(e)
+            print(f"Error in fitting peptide: {self.start}-{self.end} {self.sequence}")
+            y_pred = np.zeros(len(trialT))
+            popt = np.zeros(4)
+            perr = np.zeros(4)
+
+        return trialT, y_pred, popt, perr
+
+
     def get_deut(self, deut_time):
         for timepoint in self.timepoints:
             if timepoint.deut_time == deut_time:
@@ -502,6 +530,7 @@ class ResidueCompare:
         for state in state_list:
             for pep in state.peptides:
                 if self.resid > pep.start and self.resid < pep.end:
+                #if self.resid - pep.start < 5 and pep.end - self.resid < 5: 
                     res_containing_peptides.append(pep)
         return res_containing_peptides
 
