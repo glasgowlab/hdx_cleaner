@@ -122,6 +122,7 @@ class UptakePlot:
             for state_name in self.hdxms_datas_df.state.unique():
                 avg_peptide = self.get_average_peptide(state_name)
                 trialT, y_pred, popt, perr =  avg_peptide.fit_results
+                #trialT, y_pred, popt, perr =  avg_peptide.fit_hdx_stats()
                 ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name])
 
         # set up the plot
