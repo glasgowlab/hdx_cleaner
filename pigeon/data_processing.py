@@ -195,6 +195,10 @@ class HDXMSData:
                 return state
         return None
     
+    def plot_coverage():
+        pass
+
+
     def reindex_peptide_from_pdb(self, pdb_file, first_residue_index=1):
 
         def pdb2seq(pdb_file):
