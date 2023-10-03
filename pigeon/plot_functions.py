@@ -205,57 +205,46 @@ class UptakePlot:
 
 #new residue coverage plotting script heat map thing - sav
 class ResidueCoverage:
-    def __init__(self, hdxms_data, hdxms_data2):
-        self.state1 = hdxms_data.states[0]
-        self.state2 = hdxms_data2.states[1]
+    def __init__(self, hdxms_data):
+        self.hdxms_data = hdxms_data
 
-        self.state1_name = self.state1.state_name
-        self.state2_name = self.state2.state_name
-
-        self.state1_peptides = self.state1.peptides
-        self.state2_peptides = self.state2.peptides
-
-        self.state1_coordinates = [[pep.start, pep.end] for pep in self.state1_peptides]
-        self.state2_coordinates = [[pep.start, pep.end] for pep in self.state2_peptides]
-
-        self.are_identical = (sorted(self.state1_coordinates) == sorted(self.state2_coordinates))
-
-    def calculate_coverage(self, peptides):
-        max_end = max(pep.end for pep in peptides)
+    def calculate_coverages(self, state_name):
+        state = self.hdxms_data.get_state(state_name)
+        max_end = max(pep.end for pep in state.peptides)
         coverage = np.zeros(max_end + 1)
-        for pep in peptides:
+        for pep in state.peptides:
             coverage[pep.start:pep.end + 1] += 1
         return coverage
 
     def plot(self):
-        coverage_state1 = self.calculate_coverage(self.state1_peptides)
-        coverage_state2 = self.calculate_coverage(self.state2_peptides)
 
-        fig, axs = plt.subplots(2, 1, figsize=(15, 6), sharex=True, gridspec_kw={'hspace': 0.5})
+        row_num = len(self.hdxms_data.states)
+        fig, axes = plt.subplots(row_num, 1, figsize=(20, 3*row_num), sharex=True, sharey=True)
+        
+        coverage_list = []
+        for state in self.hdxms_data.states:
+            coverage = self.calculate_coverages(state.state_name)
+            coverage_list.append(coverage)
+        
+        max_coverage = max([max(coverage) for coverage in coverage_list])
+        min_coverage = min([min(coverage) for coverage in coverage_list])
 
-        max_coverage = max(max(coverage_state1), max(coverage_state2))
-        min_coverage = min(min(coverage_state1), min(coverage_state2))
+        for i, state in enumerate(self.hdxms_data.states):   
+            ax = axes.flatten()[i]
+            im = ax.imshow(coverage_list[i].reshape(1, -1), aspect='auto', cmap='Blues', extent=[0, 300, 0, 1], vmin=min_coverage, vmax=max_coverage)
+            ax.set_yticks([])
+            ax.set_ylabel(state.state_name)   
+        
+        ax.set_xlabel('Resid')  
 
-        im1 = axs[0].imshow(coverage_state1.reshape(1, -1), aspect='auto', cmap='Blues', extent=[0, 300, 0, 1], vmin=min_coverage, vmax=max_coverage)
-        axs[0].set_yticks([])
-
-        im2 = axs[1].imshow(coverage_state2.reshape(1, -1), aspect='auto', cmap='Blues', extent=[0, 300, 0, 1], vmin=min_coverage, vmax=max_coverage)
-        axs[1].set_yticks([])
-
-        axs[0].set_title('state: ' + self.state1_name, fontsize=25)
-        axs[1].set_title('state: ' + self.state2_name, fontsize=25)
-        axs[1].set_xlabel('Residue Number', fontsize=25)
-
-        cbar = plt.colorbar(im2, ax=axs, label='number of reads', pad=0.1)
-        tick_dict = {0: '0', max_coverage: f'{max_coverage:.0f}'}
-        cbar.set_ticks(list(tick_dict.keys()))
-        cbar.set_ticklabels(list(tick_dict.values()))
-
-        fig.suptitle('Coverage Comparison between ' + self.state1_name + ' and ' + self.state2_name,
-                     fontsize=27, x=0.5, y=0.98, ha='center', va='center')
-
+        cbar_ax = fig.add_axes([0.92, 0.4, 0.02, 0.4])  # [left, bottom, width, height]
+        fig.colorbar(im, cax=cbar_ax)
+        
+        plt.tight_layout(rect=[0, 0, 0.95, 1])  # Adjust the layout to make room for the colorbar
         plt.show()
-    
+        
+
+
 class UptakePlotsCollection:
     def __init__(self, color_dict=None, if_plot_fit=True, pdb_file=None):
         #self.hdxms_datas = hdxms_datas

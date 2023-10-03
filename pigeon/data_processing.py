@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
 from utils import compile_exchange_info, fit_functions
+from plot_functions import ResidueCoverage
 
 
 def read_hdx_tables(tables, ranges, exclude=False):
@@ -194,9 +195,10 @@ class HDXMSData:
             if state.state_name == state_name:
                 return state
         return None
-    
-    def plot_coverage():
-        pass
+     
+    def plot_res_coverage(self):
+        res_cov = ResidueCoverage(self)
+        return res_cov.plot()
 
 
     def reindex_peptide_from_pdb(self, pdb_file, first_residue_index=1):
