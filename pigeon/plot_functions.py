@@ -203,7 +203,48 @@ class UptakePlot:
                 color_dict[state_name] = colors[i]
         return color_dict
 
-    
+#new residue coverage plotting script heat map thing - sav
+class ResidueCoverage:
+    def __init__(self, hdxms_data):
+        self.hdxms_data = hdxms_data
+
+    def calculate_coverages(self, state_name):
+        state = self.hdxms_data.get_state(state_name)
+        max_end = max(pep.end for pep in state.peptides)
+        coverage = np.zeros(max_end + 1)
+        for pep in state.peptides:
+            coverage[pep.start:pep.end + 1] += 1
+        return coverage
+
+    def plot(self):
+
+        row_num = len(self.hdxms_data.states)
+        fig, axes = plt.subplots(row_num, 1, figsize=(20, 3*row_num), sharex=True, sharey=True)
+        
+        coverage_list = []
+        for state in self.hdxms_data.states:
+            coverage = self.calculate_coverages(state.state_name)
+            coverage_list.append(coverage)
+        
+        max_coverage = max([max(coverage) for coverage in coverage_list])
+        min_coverage = min([min(coverage) for coverage in coverage_list])
+
+        for i, state in enumerate(self.hdxms_data.states):   
+            ax = axes.flatten()[i]
+            im = ax.imshow(coverage_list[i].reshape(1, -1), aspect='auto', cmap='Blues', extent=[0, 300, 0, 1], vmin=min_coverage, vmax=max_coverage)
+            ax.set_yticks([])
+            ax.set_ylabel(state.state_name)   
+        
+        ax.set_xlabel('Resid')  
+
+        cbar_ax = fig.add_axes([0.92, 0.4, 0.02, 0.4])  # [left, bottom, width, height]
+        fig.colorbar(im, cax=cbar_ax)
+        
+        plt.tight_layout(rect=[0, 0, 0.95, 1])  # Adjust the layout to make room for the colorbar
+        plt.show()
+        
+
+
 class UptakePlotsCollection:
     def __init__(self, color_dict=None, if_plot_fit=True, pdb_file=None):
         #self.hdxms_datas = hdxms_datas
