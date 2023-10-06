@@ -36,7 +36,8 @@ def formatfill(data):
 def redflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical and nonoverlapping
     RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
-    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
+    #MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
+    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff) | (abs(topscores['Meas. Mr'].apply(float) - float(r['Meas. Mr'])) < MZcutoff)
     notsame = (topscores['Sequence'] != r['Sequence'])
     nonoverlapping = (topscores['Start'].apply(int) + skip_res > int(r['End'])) | (int(r['Start']) + skip_res > topscores['End'].apply(int))
     return RTflag & MZflag & notsame & nonoverlapping
@@ -44,9 +45,10 @@ def redflag(topscores, r):
 def yellowflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical but overlapping
     RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
-    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
+    #MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
+    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff) | (abs(topscores['Meas. Mr'].apply(float) - float(r['Meas. Mr'])) < MZcutoff)
     notsame = (topscores['Sequence'] != r['Sequence'])
-    overlapping = (topscores['Start'].apply(int) + skip_res <= int(r['End'])) | (int(r['Start']) + skip_res <= topscores['End'].apply(int))
+    overlapping = (topscores['Start'].apply(int) + skip_res <= int(r['End'])) & (int(r['Start']) + skip_res <= topscores['End'].apply(int))
     return RTflag & MZflag & notsame & overlapping
 
 # CMD LINE ARGS CODE
@@ -62,7 +64,6 @@ parser.add_argument('--MZC', dest='MZC', type=float, help='M/Z cutoff for duplic
 parser.add_argument('--scoreC', dest='scoreC', type=float, help='Score threshold for initial curve fit')
 parser.add_argument('--ppmC', dest='ppmC', type=float, help='ppm cutoff after curve fit')
 parser.add_argument('--maxfev', dest='maxfev', type=int, help='maxfev for curve fit')
-
 
 args = parser.parse_args()
 
@@ -267,6 +268,9 @@ for i in topscores.index:
         if r['Score'].iloc[0] == max(grp['Score']):
             ties = ties + 1
         if r['Score'].iloc[0] <= max(grp['Score']):
+            print(r[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
+            print(grp[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
+            print('\n\n')
             flagged = pd.concat([flagged, r])
             continue
     if not overlap.empty:
@@ -274,24 +278,24 @@ for i in topscores.index:
             yellow = pd.concat([yellow, r])
         overlaps = overlaps + 1
 
-#for all flagged peptides add a column to data df with 'flagged' value
-data['flagged'] = np.where(data['Sequence'].isin(flagged['Sequence']), 'flagged', '')
-#print the number of flagged peptides
-print('flagged: ' + str(len(flagged)))
-#output flagged df as csv
-#flagged.to_csv('flagged.csv')
-
-
-#for all yellow peptides add a column to the data df with 'yellow' value
-data['yellow'] = np.where(data['Sequence'].isin(yellow['Sequence']), 'yellow', '')
-#print the number of yellow peptides
-print('yellow: ' + str(len(yellow)))
-#output yellow df as csv
-#yellow.to_csv('yellow.csv')
-
-#output data df as csv with flagged column
-#data.to_csv('data2.csv', index=False)
-
+# #for all flagged peptides add a column to data df with 'flagged' value
+# data['flagged'] = np.where(data['Sequence'].isin(flagged['Sequence']), 'flagged', '')
+# #print the number of flagged peptides
+# print('flagged: ' + str(len(flagged)))
+# #output flagged df as csv
+# #flagged.to_csv('flagged.csv')
+#
+#
+# #for all yellow peptides add a column to the data df with 'yellow' value
+# data['yellow'] = np.where(data['Sequence'].isin(yellow['Sequence']), 'yellow', '')
+# #print the number of yellow peptides
+# print('yellow: ' + str(len(yellow)))
+# #output yellow df as csv
+# #yellow.to_csv('yellow.csv')
+#
+# #output data df as csv with flagged column
+# #data.to_csv('data2.csv', index=False)
+#
 
 print('ties: ' + str(ties))
 print('overlaps: ' + str(overlaps))
