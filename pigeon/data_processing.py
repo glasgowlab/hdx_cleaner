@@ -1,8 +1,9 @@
 import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
+import itertools
 from utils import compile_exchange_info, fit_functions
-from plot_functions import ResidueCoverage
+#from plot_functions import ResidueCoverage
 
 
 def read_hdx_tables(tables, ranges, exclude=False):
@@ -231,20 +232,34 @@ class HDXMSData:
             for peptide in state.peptides:
                 peptide.start -= index_offset
                 peptide.end -= index_offset
+                peptide.identifier = f"{peptide.start}-{peptide.end} {peptide.sequence}"
 
         print(f"Peptide reindexed with offset {-1*index_offset}")
 
+    def to_dataframe(self):
+        return revert_hdxmsdata_to_dataframe(self)
+    
+    def to_bayesianhdx_format(self, OUTPATH=None):
+        convert_dataframe_to_bayesianhdx_format(self.to_dataframe(), self.protein_name, OUTPATH)
+
+    def _drop_peptides(self, drop_list):
+        for state in self.states:
+            for peptide in drop_list:
+                state.peptides.remove(peptide)
+          
 
 class ProteinState:
     def __init__(self, state_name):
         self.peptides = []
         self.state_name = state_name
+        self.if_subtracted = False
 
     def add_peptide(self, peptide):
         # Check if peptide already exists
         for existing_peptide in self.peptides:
             if existing_peptide.sequence == peptide.sequence:
-                raise ValueError("Peptide already exists")
+                if existing_peptide.start == peptide.start and existing_peptide.end == peptide.end:
+                    raise ValueError(f"{ peptide.sequence} Peptide already exists")
         self.peptides.append(peptide)
         return peptide
 
@@ -252,11 +267,49 @@ class ProteinState:
     def num_peptides(self):
         return len(self.peptides)
 
-    def get_peptide(self, sequence):
+    def get_peptide(self, identifier):
         for peptide in self.peptides:
-            if peptide.sequence == sequence:
+            if peptide.identifier == identifier:
                 return peptide
         return None
+    
+    def add_new_peptides_by_subtract(self):
+        '''
+        add new peptides to the protein state by subtracting the overlapped peptides
+        '''
+        
+        if self.if_subtracted:
+            print(f"{self.num_subtracted_added} subtracted peptides have already been subtracted.")
+
+        else:
+
+            # check the input
+            if not isinstance(self, ProteinState):
+                raise TypeError("The input should be a protein state of hdxms_data object.")
+
+            subgroups = find_overlapped_peptides(self)
+
+            new_peptide_added = []
+            for subgroup in subgroups.values():
+                if len(subgroup) >= 2:
+                    # create all possible pairs of items
+                    pairs = list(itertools.combinations([i for i in subgroup], 2))
+                    
+                    for pair in pairs:
+                        new_peptide = subtract_peptides(pair[0],pair[1])
+
+                        # add the new peptide to the protein state object
+                        try:
+                            self.add_peptide(new_peptide)
+                            new_peptide_added.append(new_peptide)
+                        except:
+                            pass
+                            #print(f"Peptide {new_peptide.sequence} already exists in the protein state.")
+
+            print(f"{len(new_peptide_added)} new peptides added to the protein state.")   
+            self.if_subtracted = True
+            self.subtracted_peptides = new_peptide_added
+            self.num_subtracted_added = len(new_peptide_added)
 
 class Peptide:
     def __init__(self, sequence, start, end, protein_state=None):
@@ -264,6 +317,7 @@ class Peptide:
         self.start = start
         self.end = end
         self.timepoints = []
+        self.identifier = f"{self.start}-{self.end} {self.sequence}"
 
         if protein_state is not None:
             self.protein_state = protein_state
@@ -272,7 +326,7 @@ class Peptide:
         # Check if timepoint already exists
         for existing_timepoint in self.timepoints:
             if existing_timepoint.deut_time == timepoint.deut_time:
-                raise ValueError("Timepoint already exists")
+                raise ValueError(f"{self.start}-{self.end} {self.sequence}: {timepoint.deut_time} Timepoint already exists")
         
         self.timepoints.append(timepoint)
         return  timepoint
@@ -284,7 +338,8 @@ class Peptide:
     @property
     def max_d(self):
         num_prolines = self.sequence[2:].count('P')
-        max_d = len(self.sequence) - 2 - num_prolines
+        max_d = len(self.sequence) - num_prolines # the peptide already skipped the first two residues
+        max_d = len(self.sequence)
         return max_d
     
     @property
@@ -408,7 +463,8 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
         # Check if peptide exists in current state
         peptide = None
         for pep in protein_state.peptides:
-            if pep.sequence == row['Sequence']:
+            identifier = f"{row['Start']+2}-{row['End']} {row['Sequence'][2:]}"
+            if pep.identifier == identifier:
                 peptide = pep
                 break
         
@@ -417,7 +473,8 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
             # skip if peptide is less than 4 residues
             if len(row['Sequence']) < 4:
                 continue
-            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state)
+            peptide = Peptide(row['Sequence'][2:], row['Start']+2, row['End'], protein_state) # skip the first two residues
+            #peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
             protein_state.add_peptide(peptide)
         
         # Add timepoint data to peptide
@@ -431,6 +488,156 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
     
     return hdxms_data
 
+
+import pandas as pd
+
+def revert_hdxmsdata_to_dataframe(hdxms_data):
+    '''
+    Convert HDXMSData object to DataFrame
+    '''
+    # List to hold data
+    data_list = []
+    
+    # Iterate over states in HDXMSData
+    for state in hdxms_data.states:
+        # Iterate over peptides in ProteinState
+        for pep in state.peptides:
+            # Iterate over timepoints in Peptide
+            for timepoint in pep.timepoints:
+                # Dictionary to hold data for this timepoint
+                data_dict = {
+                    'Protein State': state.state_name,
+                    'Sequence': pep.sequence,
+                    'Start': pep.start,
+                    'End': pep.end,
+                    'Deut Time (sec)': timepoint.deut_time,
+                    '#D': timepoint.num_d,
+                    'Stddev': timepoint.stddev
+                }
+                data_list.append(data_dict)
+    
+    # Create DataFrame from data_list
+    df = pd.DataFrame(data_list)
+    return df
+
+
+def convert_dataframe_to_bayesianhdx_format(data_df, protein_name='protein', OUTPATH=None):
+    if OUTPATH is None:
+        OUTPATH = './'
+        print('No output path specified, using current directory')
+    
+    data_df_renamed = data_df.rename(columns={'Sequence':'peptide_seq', 'Start':'start_res', 'End':'end_res', 'Deut Time (sec)':'time', '#D':'D_inc'})
+
+    # filter out peptides with negative start or end residue (due to the His tag)
+    data_df_renamed = data_df_renamed[data_df_renamed['start_res'] > 0]
+    data_df_renamed = data_df_renamed[data_df_renamed['end_res'] > 0]
+    
+    # Save data for each state
+    states = set(data_df_renamed['Protein State'])
+    for state in states:
+        state_df = data_df_renamed[data_df_renamed['Protein State'] == state]
+        state_df.to_csv(f'{OUTPATH}/bayesian_hdx_{protein_name}_'+state+'.dat', index=False)
+
+    print(f'Data saved to {OUTPATH}')
+
+
+        
+def refine_data(hdxms_data_list):
+    '''
+    Remove peptides with large deviation across replicates
+    std > 80% * max difference between states
+    '''
+    
+
+def find_overlapped_peptides(protein_state):
+    '''
+    find overlapped peptides in the hdxms_data object that could be used for substation 
+
+    Parameters
+    ----------
+    protein_state : hdxms_data.states[0]
+        the protein state of interest
+    '''
+
+    # check the input
+    if not isinstance(protein_state, ProteinState):
+        raise TypeError("The input should be a protein state of hdxms_data object.")
+    
+    # create a dictionary to store the subgroups
+    start_subgroups = {} # subgroups with the same start position
+    end_subgroups = {} # subgroups with the same end position
+
+    # iterate over all the peptides
+    for peptide in protein_state.peptides:
+        
+        # check if the start position is already in the dictionary
+        if peptide.start in start_subgroups:
+            start_subgroups[peptide.start].append(f"{peptide.start}-{peptide.end} {peptide.sequence}")
+        else:
+            start_subgroups[peptide.start] = [f"{peptide.start}-{peptide.end} {peptide.sequence}"]
+        
+        # check if the end position is already in the dictionary
+        if peptide.end in end_subgroups:
+            end_subgroups[peptide.end].append(f"{peptide.start}-{peptide.end} {peptide.sequence}")
+        else:
+            end_subgroups[peptide.end] = [f"{peptide.start}-{peptide.end} {peptide.sequence}"]
+        
+    # combine two subgroups
+    combined = {**start_subgroups, **end_subgroups}
+    subgroups = {}
+    for key in combined.keys():
+        value = list(set(combined[key]))
+        if len(value) > 1:
+            subgroups[key] = [protein_state.get_peptide(idf) for idf in value]
+
+    return subgroups
+
+def subtract_peptides(peptide_1, peptide_2):
+    """
+    Subtract two peptides and create a new peptide.
+    """
+    # Check if the two peptides have the same length
+    if peptide_1.sequence == peptide_2.sequence:
+        raise ValueError("Cannot subtract the same two peptides.")
+    
+    if peptide_1.start != peptide_2.start and peptide_1.end != peptide_2.end:
+        raise ValueError("start or end need to be the different.")
+    
+    # get longer peptide and shorter peptide
+    if len(peptide_1.sequence) > len(peptide_2.sequence):
+        longer_peptide = peptide_1
+        shorter_peptide = peptide_2
+    else:
+        longer_peptide = peptide_2
+        shorter_peptide = peptide_1
+
+    timepoints1 = set([tp.deut_time for tp in longer_peptide.timepoints])
+    timepoints2 = set([tp.deut_time for tp in shorter_peptide.timepoints])
+    common_timepoints = list(timepoints1.intersection(timepoints2))
+    common_timepoints.sort()
+
+    if shorter_peptide.start == longer_peptide.start:
+        start = shorter_peptide.end + 1
+        end = longer_peptide.end 
+        new_sequence = longer_peptide.sequence[shorter_peptide.end - shorter_peptide.start +1 : longer_peptide.end - longer_peptide.start +1]
+    else:
+        start = longer_peptide.start
+        end = shorter_peptide.start - 1
+        new_sequence = longer_peptide.sequence[0: shorter_peptide.start - longer_peptide.start]
+
+    # Create a new peptide
+    new_peptide = Peptide(sequence=new_sequence, start=start, end=end)
+
+    # iterate over all the timepoints
+    for tp in common_timepoints:
+        std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
+        timepoints = Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
+        new_peptide.add_timepoint(timepoints)
+
+    return new_peptide
+
+
+     
 
 class HDXStatePeptideCompares:
     def __init__(self, state1_list, state2_list):

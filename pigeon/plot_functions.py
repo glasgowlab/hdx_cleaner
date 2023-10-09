@@ -89,17 +89,19 @@ def plot_uptake_plots(peptide_exchange_dict, timepoints, stdev_dict_dict, color_
     plt.close('all')
 
 class UptakePlot:
-    def __init__(self, hdxms_datas, sequence:str, color_dict=None, if_plot_fit=True,  figure=None, ax=None):
+    def __init__(self, hdxms_datas, identifier:str, color_dict=None, if_plot_fit=True,  figure=None, ax=None):
         '''
         hdxms_datas: list of class HDXMSData objects
         '''
         self.hdxms_datas = hdxms_datas
-        self.sequence = sequence
+        self.identifier = identifier
+        self.sequence = identifier.split(' ')[1]
         self.color_dict = self.make_color_dict(color_dict)
         self.if_plot_fit = if_plot_fit
         self.figure = figure
         self.ax = ax
-        self.title = self.make_title()
+        #self.title = self.make_title()
+        #self.title = identifier
         self.uptakeplot = self.make_uptakeplot()
 
 
@@ -130,11 +132,11 @@ class UptakePlot:
         ax.set_xlabel('Time (seconds)')
         ax.set_xscale('log')
         avg_peptide = self.get_average_peptide(self.hdxms_datas_df.state.unique()[0])
-        ax.set_ylim(0, avg_peptide.max_d*1.1)
+        ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
         #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
         ax.legend()
 
-        ax.set_title(self.title)
+        ax.set_title(self.identifier)
         plt.close()
 
         return figure
@@ -148,7 +150,7 @@ class UptakePlot:
             hdxms_data_df = pd.DataFrame()
             
             for state in hdxms_data.states:
-                peptide = state.get_peptide(self.sequence)
+                peptide = state.get_peptide(self.identifier)
                 
                 if peptide is not None:
                     peptide_df_i = pd.DataFrame({
@@ -171,8 +173,8 @@ class UptakePlot:
         group_mean =final_group.mean(numeric_only=True).reset_index()
         group_std =final_group.std(numeric_only=True).reset_index()
 
-        start = self.title.split(' ')[0].split('-')[0]
-        end = self.title.split(' ')[0].split('-')[1]
+        start = self.identifier.split(' ')[0].split('-')[0]
+        end = self.identifier.split(' ')[0].split('-')[1]
         peptide = Peptide(self.sequence, start, end, f"averaged peptide: {state_name}")
         for i in range(len(group_mean)):
             timepoint = Timepoint(peptide, group_mean['time'][i], group_mean['deut'][i], group_std['deut'][i])
