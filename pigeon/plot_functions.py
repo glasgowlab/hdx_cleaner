@@ -123,7 +123,8 @@ class UptakePlot:
         if self.if_plot_fit:
             for state_name in self.hdxms_datas_df.state.unique():
                 avg_peptide = self.get_average_peptide(state_name)
-                trialT, y_pred, popt, perr =  avg_peptide.fit_results
+                #trialT, y_pred, popt, perr =  avg_peptide.fit_results
+                trialT, y_pred, popt, perr =  avg_peptide.new_fit()
                 #trialT, y_pred, popt, perr =  avg_peptide.fit_hdx_stats()
                 ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name])
 
@@ -132,7 +133,9 @@ class UptakePlot:
         ax.set_xlabel('Time (seconds)')
         ax.set_xscale('log')
         avg_peptide = self.get_average_peptide(self.hdxms_datas_df.state.unique()[0])
-        ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
+        
+        ax.set_ylim(min(self.hdxms_datas_df['deut'])-1, max(self.hdxms_datas_df['deut'])+1)
+        #ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
         #ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
         ax.legend()
 
@@ -267,14 +270,15 @@ class UptakePlotsCollection:
             for hdxms_data in hdxms_datas:
                 for state in hdxms_data.states:
                     for peptide in state.peptides:
-                        sequences.append((peptide.start, peptide.end, peptide.sequence))
+                        idf = f'{peptide.start}-{peptide.end} {peptide.sequence}'
+                        sequences.append(idf)
             sequences = list(set(sequences))
             sequences.sort()
             return sequences
         
         unique_sequences = get_unique_sequences(hdxms_datas)
         for sequence in unique_sequences:
-            self.add_plot(hdxms_datas, sequence[2])
+            self.add_plot(hdxms_datas, sequence)
 
     def save_plots(self, path):
         folder_name = os.path.join(path, 'uptake_plots')
@@ -282,7 +286,7 @@ class UptakePlotsCollection:
             os.mkdir(folder_name)
         for plot in self.plots:
             fig = plot.uptakeplot
-            fig.savefig(f'{folder_name}/{plot.title}.png', bbox_inches='tight')
+            fig.savefig(f'{folder_name}/{plot.identifier}.png', bbox_inches='tight')
 
 
 def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):

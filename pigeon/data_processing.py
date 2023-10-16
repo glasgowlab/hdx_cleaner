@@ -253,6 +253,7 @@ class ProteinState:
         self.peptides = []
         self.state_name = state_name
         self.if_subtracted = False
+        self.num_subtracted_added = 0
 
     def add_peptide(self, peptide):
         # Check if peptide already exists
@@ -277,39 +278,58 @@ class ProteinState:
         '''
         add new peptides to the protein state by subtracting the overlapped peptides
         '''
-        
+
+        # check the input
+        if not isinstance(self, ProteinState):
+            raise TypeError("The input should be a protein state of hdxms_data object.")
+
+        subgroups = find_overlapped_peptides(self)
+
+        new_peptide_added = []
+        for subgroup in subgroups.values():
+            if len(subgroup) >= 2:
+                # create all possible pairs of items
+                pairs = list(itertools.combinations([i for i in subgroup], 2))
+                
+                for pair in pairs:
+                    new_peptide = subtract_peptides(pair[0],pair[1])
+
+                    #skip if new_peptide has less than 3 timepoints
+                    if new_peptide.num_timepoints <= 3:
+                        continue
+                    #skip if new_peptide is single Proline
+                    if new_peptide.sequence == 'P':
+                        continue  
+
+                    #skip if new_peptide is negative
+                    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.5:
+                        continue
+
+                    # add the new peptide to the protein state object
+                    try:
+                        self.add_peptide(new_peptide)
+                        new_peptide_added.append(new_peptide)
+                    except:
+                        pass
+                        #print(f"Peptide {new_peptide.sequence} already exists in the protein state.")
+
+        print(f"{len(new_peptide_added)} new peptides added to the protein state.")   
+
+        self.subtracted_peptides = new_peptide_added
+        self.num_subtracted_added += len(new_peptide_added)
+        return new_peptide_added
+
+    def  add_all_subtract(self):
         if self.if_subtracted:
             print(f"{self.num_subtracted_added} subtracted peptides have already been subtracted.")
 
-        else:
+        while True:
+            new_peptides = self.add_new_peptides_by_subtract()
+            if len(new_peptides) == 0:
+                break
+        
+        self.if_subtracted = True
 
-            # check the input
-            if not isinstance(self, ProteinState):
-                raise TypeError("The input should be a protein state of hdxms_data object.")
-
-            subgroups = find_overlapped_peptides(self)
-
-            new_peptide_added = []
-            for subgroup in subgroups.values():
-                if len(subgroup) >= 2:
-                    # create all possible pairs of items
-                    pairs = list(itertools.combinations([i for i in subgroup], 2))
-                    
-                    for pair in pairs:
-                        new_peptide = subtract_peptides(pair[0],pair[1])
-
-                        # add the new peptide to the protein state object
-                        try:
-                            self.add_peptide(new_peptide)
-                            new_peptide_added.append(new_peptide)
-                        except:
-                            pass
-                            #print(f"Peptide {new_peptide.sequence} already exists in the protein state.")
-
-            print(f"{len(new_peptide_added)} new peptides added to the protein state.")   
-            self.if_subtracted = True
-            self.subtracted_peptides = new_peptide_added
-            self.num_subtracted_added = len(new_peptide_added)
 
 class Peptide:
     def __init__(self, sequence, start, end, protein_state=None):
@@ -318,6 +338,7 @@ class Peptide:
         self.end = end
         self.timepoints = []
         self.identifier = f"{self.start}-{self.end} {self.sequence}"
+        self.note = None
 
         if protein_state is not None:
             self.protein_state = protein_state
@@ -399,6 +420,39 @@ class Peptide:
         return trialT, y_pred, popt, perr
 
 
+    def new_fit(self):
+        from sklearn.metrics import mean_squared_error
+
+        x = np.array([tp.deut_time for tp in self.timepoints])
+        y = np.array([tp.num_d for tp in self.timepoints])
+        max_timepoint = max([tp.deut_time for tp in self.timepoints])
+        trialT = np.logspace(1.5, np.log10(max_timepoint*2), 100)
+
+        fit_resluts = {}
+        for exp_num in range(1, 5):
+
+
+
+            n = exp_num
+            
+            try:
+                popt, pcov = curve_fit(fit_func(n=n), x, y, p0=[0.01]*n + [1]*n, bounds=(0, [np.inf]*n + [self.max_d]*n), maxfev=1000)
+                y_pred = fit_func(n=n)(trialT, *popt)
+                perr = np.sqrt(np.diag(pcov))
+
+                mse = mean_squared_error(y, fit_func(n=n)(x, *popt))
+                loss = mse + np.sqrt(np.sum(perr)) * 0.1 
+
+                fit_resluts[exp_num] = {'popt': popt, 'pcov': pcov, 'perr': perr, 'mse': mse, 'loss': loss, 'y_pred': y_pred, 'trialT': trialT}
+            except Exception as e:
+                print(f"Error in fitting peptide: exp_num={exp_num}")
+                fit_resluts[exp_num] = {'loss': np.inf}
+
+        best_fit = min(fit_resluts, key=lambda x: fit_resluts[x]['loss'])
+        best_model = fit_resluts[best_fit]
+        return best_model['trialT'], best_model['y_pred'], best_model['popt'], best_model['perr']
+
+
     def get_deut(self, deut_time):
         for timepoint in self.timepoints:
             if timepoint.deut_time == deut_time:
@@ -423,6 +477,31 @@ def exchange_fit(x, a, b, c, d, e, f, g, max_d):
 def exchange_fit_low(x, b, c, e, f, g, max_d):
     return max_d - b * np.exp(-e * x) - c * np.exp(-f * x) - g
 
+
+
+def exponential_sum_decorator(n):
+    def decorator(func):
+        def wrapper(*args):
+            if len(args) != 2*n + 1:
+                raise ValueError(f"Expected {2*n + 1} arguments, got {len(args)}")
+            
+            t = args[0]  # assuming the first argument is the time variable 't'
+            k_values = args[1:n+1]  # extracting the rate constants
+            max_d_values = args[n+1:]  # extracting the max deuteration levels
+            
+            result = 0
+            for k, max_d in zip(k_values, max_d_values):
+                result += func(t, k, max_d)  # call the original function with the ith rate constant, time, and max_d
+            return result
+        return wrapper
+    return decorator
+
+def fit_func(n=1):
+    @exponential_sum_decorator(n=n)
+    def single_amide_ex(t, k, max_d):
+        return max_d * (1 - np.exp(-k*t))
+    
+    return single_amide_ex
 
 
 class Timepoint:
@@ -531,6 +610,9 @@ def convert_dataframe_to_bayesianhdx_format(data_df, protein_name='protein', OUT
     # filter out peptides with negative start or end residue (due to the His tag)
     data_df_renamed = data_df_renamed[data_df_renamed['start_res'] > 0]
     data_df_renamed = data_df_renamed[data_df_renamed['end_res'] > 0]
+
+    # filter out the single proline
+    data_df_renamed = data_df_renamed[data_df_renamed['peptide_seq'] != 'P']
     
     # Save data for each state
     states = set(data_df_renamed['Protein State'])
@@ -603,6 +685,9 @@ def subtract_peptides(peptide_1, peptide_2):
     if peptide_1.start != peptide_2.start and peptide_1.end != peptide_2.end:
         raise ValueError("start or end need to be the different.")
     
+    if peptide_1.protein_state.state_name != peptide_2.protein_state.state_name:
+        raise  ValueError("Cannot subtract peptides from different states.")
+    
     # get longer peptide and shorter peptide
     if len(peptide_1.sequence) > len(peptide_2.sequence):
         longer_peptide = peptide_1
@@ -626,14 +711,14 @@ def subtract_peptides(peptide_1, peptide_2):
         new_sequence = longer_peptide.sequence[0: shorter_peptide.start - longer_peptide.start]
 
     # Create a new peptide
-    new_peptide = Peptide(sequence=new_sequence, start=start, end=end)
+    new_peptide = Peptide(sequence=new_sequence, start=start, end=end, protein_state=peptide_1.protein_state)
 
     # iterate over all the timepoints
     for tp in common_timepoints:
         std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
         timepoints = Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
         new_peptide.add_timepoint(timepoints)
-
+    new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
     return new_peptide
 
 
@@ -647,9 +732,10 @@ class HDXStatePeptideCompares:
     
     @property
     def common_sequences(self):
-
-        peptides1 = set([peptide.sequence for state1 in self.state1_list for peptide in state1.peptides])
-        peptides2 = set([peptide.sequence for state2 in self.state2_list for peptide in state2.peptides])
+        
+        #indetifer f"{pep.start}-{pep.end} {pep.sequence}"
+        peptides1 = set([f"{pep.start}-{pep.end} {pep.sequence}" for state1 in self.state1_list for pep in state1.peptides])
+        peptides2 = set([f"{pep.start}-{pep.end} {pep.sequence}" for state2 in self.state2_list for pep in state2.peptides])
         common_sequences = peptides1.intersection(peptides2)                
         return common_sequences
 
