@@ -3,6 +3,8 @@ import numpy as np
 from scipy.optimize import curve_fit
 import itertools
 from utils import compile_exchange_info, fit_functions
+import os
+from glob import glob
 #from plot_functions import ResidueCoverage
 
 
@@ -59,12 +61,12 @@ def process_tp_frame(header, bigdf, tp_frame, i, new_df):
 
 
 def clean_data_df(df):
-    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End'])['#D'].agg(['mean', 'std', 'count'])
+    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End', 'Charge'])['#D'].agg(['mean', 'std', 'count'])
     df.reset_index(inplace=True)
     df.rename(columns={'mean': '#D', 'std': 'Stddev', 'count': '#Rep', 'State': 'Protein State'}, inplace=True)
 
     if 0 not in df['Deut Time (sec)'].unique():
-        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End']).sum()
+        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End', 'Charge']).sum()
         tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
         tp0s['#Rep'] = 1
         df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
@@ -258,9 +260,8 @@ class ProteinState:
     def add_peptide(self, peptide):
         # Check if peptide already exists
         for existing_peptide in self.peptides:
-            if existing_peptide.sequence == peptide.sequence:
-                if existing_peptide.start == peptide.start and existing_peptide.end == peptide.end:
-                    raise ValueError(f"{ peptide.sequence} Peptide already exists")
+            if existing_peptide.identifier == peptide.identifier:
+                raise ValueError(f"{ peptide.identifier} Peptide already exists")
         self.peptides.append(peptide)
         return peptide
 
@@ -346,8 +347,8 @@ class Peptide:
     def add_timepoint(self, timepoint):
         # Check if timepoint already exists
         for existing_timepoint in self.timepoints:
-            if existing_timepoint.deut_time == timepoint.deut_time:
-                raise ValueError(f"{self.start}-{self.end} {self.sequence}: {timepoint.deut_time} Timepoint already exists")
+            if existing_timepoint.deut_time == timepoint.deut_time and existing_timepoint.charge_state == timepoint.charge_state:
+                raise ValueError(f"{self.start}-{self.end} {self.sequence}: {timepoint.deut_time} (charge: {timepoint.charge_state})Timepoint already exists")
         
         self.timepoints.append(timepoint)
         return  timepoint
@@ -465,11 +466,26 @@ class Peptide:
                 return timepoint.d_percent
         return None
     
-    def get_timepoint(self, deut_time):
-        for timepoint in self.timepoints:
-            if timepoint.deut_time == deut_time:
-                return timepoint
-        return None
+    def get_timepoint(self, deut_time, charge_state=None):
+
+        if charge_state is None:
+            timepoints = [tp for tp in self.timepoints if tp.deut_time == deut_time]
+
+            #if not empty return average timepoint
+            if len(timepoints) == 1:
+                return timepoints[0]
+            
+            elif len(timepoints) > 1:
+                avg_timepoint = Timepoint(self, deut_time, np.average([tp.num_d for tp in timepoints]), np.std([tp.num_d for tp in timepoints]))
+                return avg_timepoint
+            else:
+                return None
+        else:
+            timepoints = [tp for tp in self.timepoints if tp.deut_time == deut_time and tp.charge_state == str(charge_state)]
+            if len(timepoints) == 1:
+                return timepoints[0]
+            else:
+                return None
 
 def exchange_fit(x, a, b, c, d, e, f, g, max_d):
     return max_d - a * np.exp(-d * x) - b * np.exp(-e * x) - c * np.exp(-f * x) - g
@@ -505,13 +521,19 @@ def fit_func(n=1):
 
 
 class Timepoint:
-    def __init__(self, peptide, deut_time, num_d, stddev):
+    def __init__(self, peptide, deut_time, num_d, stddev, charge_state=None):
         self.peptide = peptide
         self.deut_time = deut_time
         self.num_d = num_d
         self.stddev = stddev
         self.d_percent = num_d / peptide.max_d
+        self.charge_state = charge_state
 
+    def load_raw_ms_csv(self, csv_file):
+        df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
+        # normalize intensity to sum to 1
+        df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
+        self.raw_ms = df
 
 def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
     ''' 
@@ -542,7 +564,8 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
         # Check if peptide exists in current state
         peptide = None
         for pep in protein_state.peptides:
-            identifier = f"{row['Start']+2}-{row['End']} {row['Sequence'][2:]}"
+            #identifier = f"{row['Start']+2}-{row['End']} {row['Sequence'][2:]}"
+            identifier = f"{row['Start']}-{row['End']} {row['Sequence']}"
             if pep.identifier == identifier:
                 peptide = pep
                 break
@@ -552,12 +575,12 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
             # skip if peptide is less than 4 residues
             if len(row['Sequence']) < 4:
                 continue
-            peptide = Peptide(row['Sequence'][2:], row['Start']+2, row['End'], protein_state) # skip the first two residues
-            #peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
+            #peptide = Peptide(row['Sequence'][2:], row['Start']+2, row['End'], protein_state) # skip the first two residues
+            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
             protein_state.add_peptide(peptide)
         
         # Add timepoint data to peptide
-        timepoint = Timepoint(peptide, row['Deut Time (sec)'], row['#D'], row['Stddev'])
+        timepoint = Timepoint(peptide, row['Deut Time (sec)'], row['#D'], row['Stddev'],row['Charge'])
         
         # if timepoint has no data, skip
         if np.isnan(timepoint.num_d):
@@ -722,6 +745,50 @@ def subtract_peptides(peptide_1, peptide_2):
     return new_peptide
 
 
+def read_raw_ms_csv(csv_file):
+    df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
+    # normalize intensity to sum to 1
+    df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
+    return df
+
+
+def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
+    '''
+    Load raw MS data from csv files to hdxms_data object. 
+    !!! use it before reindex_peptide_from_pdb
+    '''
+    for state in hdxms_data.states:
+
+        state_raw_spectra_path = os.path.join(raw_spectra_path, state.state_name)
+        
+        # glob all the folders
+        path_dict = {}
+        folders = sorted(glob(state_raw_spectra_path + '/*'))
+
+        for folder in folders:
+            start, end, seq = folder.split('/')[-1].split('-')
+            #start, end, seq = int(start)+2, int(end), seq[2:]     # skip first two res
+            start, end, seq = int(start), int(end), seq
+            pep_idf = f'{start}-{end} {seq}'
+            path_dict[pep_idf] = folder
+
+        
+        # iterate through all peptides
+        for peptide in state.peptides:
+            pep_sub_folder =  path_dict[peptide.identifier]
+
+
+            for tp in peptide.timepoints:
+                if tp.deut_time == 0:
+                    csv_name = f'Non-D-1-z{tp.charge_state}.csv'
+                else:
+                    csv_name = f'{int(tp.deut_time)}s-1-z{tp.charge_state}.csv'
+                
+                csv_file_path = os.path.join(pep_sub_folder, csv_name)
+                df = tp.load_raw_ms_csv(csv_file_path)
+                #print(csv_file_path)
+
+    print('Done loading raw MS data.')
      
 
 class HDXStatePeptideCompares:
