@@ -159,7 +159,8 @@ class UptakePlot:
                     peptide_df_i = pd.DataFrame({
                         'time': [tp.deut_time for tp in peptide.timepoints],
                         'deut': [tp.num_d for tp in peptide.timepoints],
-                        'state': state.state_name
+                        'state': state.state_name,
+                        'charge_state': [tp.charge_state for tp in peptide.timepoints],
                     })
                     
                     hdxms_data_df = pd.concat([hdxms_data_df, peptide_df_i], ignore_index=True)
