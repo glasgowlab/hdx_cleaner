@@ -176,6 +176,7 @@ class UptakePlot:
         group_mean =final_group.mean(numeric_only=True).reset_index()
         group_std =final_group.std(numeric_only=True).reset_index()
 
+
         start = self.identifier.split(' ')[0].split('-')[0]
         end = self.identifier.split(' ')[0].split('-')[1]
         peptide = Peptide(self.sequence, start, end, f"averaged peptide: {state_name}")
@@ -387,7 +388,67 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
     plt.close()
     
     return fig
+    
+#Function to make a heatmap with positive and negative deuterium uptake values separated by a dotted line
+def create_heatmap_with_dotted_line(compare, colorbar_max, colormap="RdBu"):
+    font = {'family': 'Arial',
+            'weight': 'normal',
+            'size': 14
+        }
+    axes = {'titlesize': 18,
+            'titleweight': 'bold',
+            'labelsize': 16
+        }
 
+    plt.rc('font', **font)
+    plt.rc('axes', **axes)
+
+    plt.rcParams['figure.figsize'] = (4, 25)
+    plt.rcParams['font.size'] = 14
+    plt.rcParams['font.family'] = 'Arial'
+    colormap = cm.get_cmap(colormap)
+
+    fig, ax = plt.subplots(figsize=(20, 10))
+
+    leftbound = compare.peptide_compares[0].peptide1_list[0].start - 10
+    rightbound = compare.peptide_compares[-1].peptide1_list[0].end + 10
+    ax.set_xlim(leftbound, rightbound)
+    ax.xaxis.set_ticks(np.arange(round(leftbound, -1), round(rightbound, -1), 10))
+    y_min = -105
+    y_max = 105
+    ax.set_ylim(y_min, y_max)
+    y_middle=(y_min+y_max)/2
+    ax.grid(axis='x')
+    ax.yaxis.set_ticks([])
+    #add a horizontal dotted line that matches with the 0.0 on the colorbar
+    ax.axhline(y=y_middle, color='k', linestyle='--', linewidth=1)
+
+    norm = col.Normalize(vmin=-colorbar_max, vmax=colorbar_max)
+
+    fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm))
+
+    for i,peptide_compare in enumerate(compare.peptide_compares):
+            for peptide in peptide_compare.peptide1_list:
+                deut_diff_avg = peptide_compare.deut_diff_avg
+                #print(deut_diff_avg)
+                
+                if deut_diff_avg > 0:
+                    y_position = (i % 20) * 5 + ((i // 20) % 2) * 2.5 + y_middle + 2
+                    
+                else:
+                    y_position = y_middle - ((i % 20) * 5 + ((i // 20) % 2) * 2.5) - 5  # Below the line
+
+                rect = Rectangle((peptide.start, y_position),
+                                    peptide.end - peptide.start,
+                                    3,
+                                    fc=colormap(norm(deut_diff_avg)))
+                ax.add_patch(rect)
+
+
+    ax.set_title(compare.state1_list[0].state_name + '-' + compare.state2_list[0].state_name)
+    fig.tight_layout()
+            
+    return fig
 
 def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=None, path=None,
                               save_pdb=False):
@@ -400,22 +461,31 @@ def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=
     cmd.color("gray")
 
     if isinstance(compares, HDXStatePeptideCompares):
-
         for i, seq in enumerate(rgb_df['title']):
-            seq = seq.split()[-1]
-            cmd.select(seq, 'pepseq ' + seq)
-            cmd.set_color(seq, [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-            cmd.color(seq, seq)
-        
-    elif isinstance(compares, HDXStateResidueCompares):
-        for i, seq in enumerate(rgb_df['title']):
-            if np.isnan(rgb_df['s'].values[i]):
+            split_seq = seq.split()
+            seq=seq.split()[-1]
+            if len(split_seq) > 0:
+                resi = split_seq[0]  # Access the first part of the split
+            if "-" == resi[0]:
                 continue
-            seq = seq.split()[-1]
-            cmd.select(seq, 'resi ' + seq)
-            cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-            cmd.color(f'res_{seq}', seq)
-            cmd.delete(seq)
+            if "--" in resi:
+                continue
+                cmd.select(seq, 'resi ' + resi)
+                cmd.set_color(seq, [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+                cmd.color(seq, seq)
+
+
+    elif isinstance(compares, HDXStateResidueCompares):
+            for i, seq in enumerate(rgb_df['title']):
+                if np.isnan(rgb_df['s'].values[i]):
+                    continue
+                parts = seq.split()
+                if len(parts) > 0:
+                    resi = parts[0]  # Extract the first part (e.g., "ABC")
+                    cmd.select(seq, 'resi ' + resi)
+                    cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+                    cmd.color(f'res_{seq}', seq)
+                    cmd.delete(seq)
     
     cmd.ray(1000,1000)
     
