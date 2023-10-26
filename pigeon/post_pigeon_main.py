@@ -25,8 +25,10 @@ print(args)
 print(args.tables)
 cmd.load(args.pm)
 
+###
 #Example usage:
 #python post_pigeon_main.py --t TechRep1_peptide_pool_result.csv TechRep2_peptide_pool_result.csv  --r TechRep1_peptide_rangelist.csv TechRep2_peptide_rangelist.csv --pm 1pfk_Xray.pdb --o outputdir --cbarmax 0.5 --sub
+###
 
 OUTDIR = args.outdir 
 if args.outdir is None:
@@ -49,11 +51,11 @@ for i in range(len(args.tables)):
 
 # if args.subtract == True then do the peptide subtraction
 if args.subtract:
-    print('Peptides will be subtracted for increased resolution')
+    print('PEPTIDES WILL BE SUBTRACTED FOR INCREASED RESOLUTION')
     # Add new peptides to protein state after subtraction 
     [state.add_all_subtract() for data in hdxms_data_list for state in data.states]
 else:
-    print('Peptides will not be subtracted')
+    print('PEPTIDES WILL NOT BE SUBTRACTED')
 
 # make a uptake plot for all the peptides in hdms_data
 #uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just data points)
@@ -71,8 +73,8 @@ if not os.path.exists(OUTDIR):
 
 for state1_name, state2_name in combinations:
 
-    state1_list = [i.get_state(state1_name) for i in hdxms_data_list]
-    state2_list = [i.get_state(state2_name) for i in hdxms_data_list]
+    state1_list = [i.get_state(state1_name) for i in hdxms_data_list if i.get_state(state1_name) is not None]
+    state2_list = [i.get_state(state2_name) for i in hdxms_data_list  if i.get_state(state2_name) is not None]
 
     compare = HDXStatePeptideCompares(state1_list, state2_list)
     compare.add_all_compare()
@@ -86,9 +88,9 @@ for state1_name, state2_name in combinations:
     heatmap_compare_separated = create_heatmap_with_dotted_line(compare,0.5)
     heatmap_compare_separated.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-sep.png')
 
-    create_compare_pymol_plot(compare, colorbar_max=0.2, pdb_file=args.pm, path=OUTDIR)
+    #create_compare_pymol_plot(compare, colorbar_max=0.2, pdb_file=args.pm, path=OUTDIR)
 
     res_compares = HDXStateResidueCompares([i for i in range(1, 320)], state1_list, state2_list)
     res_compares.add_all_compare()
 
-    create_compare_pymol_plot(res_compares, 0.2, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
+    #create_compare_pymol_plot(res_compares, 0.2, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
