@@ -34,6 +34,9 @@ OUTDIR = args.outdir
 if args.outdir is None:
     OUTDIR = os.getcwd()
 
+colorbar_max = args.cbarmax
+print("The cbarmax threshold set is: " + str(colorbar_max))
+
 # load the data
 hdxms_data_list = []
 for i in range(len(args.tables)):
@@ -57,10 +60,10 @@ if args.subtract:
 else:
     print('PEPTIDES WILL NOT BE SUBTRACTED')
 
-# make a uptake plot for all the peptides in hdms_data
-#uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just data points)
-#uptakes.add_plot_all(hdxms_data_list)
-#uptakes.save_plots(OUTDIR)
+# # make a uptake plot for all the peptides in hdms_data
+# uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just data points)
+# uptakes.add_plot_all(hdxms_data_list)
+# #uptakes.save_plots(OUTDIR)
 
 
 from itertools import product
@@ -79,18 +82,18 @@ for state1_name, state2_name in combinations:
     compare = HDXStatePeptideCompares(state1_list, state2_list)
     compare.add_all_compare()
 
-    heatmap_compare_tp = create_heatmap_compare_tp(compare, 0.5)
-    heatmap_compare_tp.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-tp.png')
+    # heatmap_compare_tp = create_heatmap_compare_tp(compare, 0.5)
+    # heatmap_compare_tp.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-tp.png')
 
-    heatmap_compare = create_heatmap_compare(compare, 0.5)
-    heatmap_compare.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap.png')
+    # heatmap_compare = create_heatmap_compare(compare, 0.5)
+    # heatmap_compare.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap.png')
 
-    heatmap_compare_separated = create_heatmap_with_dotted_line(compare,0.5)
-    heatmap_compare_separated.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-sep.png')
+    # heatmap_compare_separated = create_heatmap_with_dotted_line(compare,0.5)
+    # heatmap_compare_separated.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-sep.png')
 
-    #create_compare_pymol_plot(compare, colorbar_max=0.2, pdb_file=args.pm, path=OUTDIR)
+    create_compare_pymol_plot(compare, colorbar_max, pdb_file=args.pm, path=OUTDIR)
 
     res_compares = HDXStateResidueCompares([i for i in range(1, 320)], state1_list, state2_list)
     res_compares.add_all_compare()
 
-    #create_compare_pymol_plot(res_compares, 0.2, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
+    create_compare_pymol_plot(res_compares, colorbar_max, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
