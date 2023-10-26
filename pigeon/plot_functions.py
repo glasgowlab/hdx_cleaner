@@ -461,22 +461,30 @@ def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=
     cmd.color("gray")
 
     if isinstance(compares, HDXStatePeptideCompares):
+        for i, seq in enumerate(rgb_df['title']):
+            parts = seq.split()
+            if len(parts) > 0:
+                resi = parts[0]  # Extract the first part (e.g., "ABC")
+                seq = parts[-1]
+                seq_n = "res_" + seq
+                #print(seq_n)
+                #print(f"Selecting: {seq}, 'resi {resi}'")
+                cmd.select(seq_n, 'resi ' + resi)
+                cmd.set_color(f'{seq_n}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+                cmd.color(f'{seq_n}', seq_n)
+                #print(f'{seq_n}', seq)
 
-        for i, seq in enumerate(rgb_df['title']):
-            seq = seq.split()[-1]
-            cmd.select(seq, 'pepseq ' + seq)
-            cmd.set_color(seq, [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-            cmd.color(seq, seq)
-        
     elif isinstance(compares, HDXStateResidueCompares):
-        for i, seq in enumerate(rgb_df['title']):
-            if np.isnan(rgb_df['s'].values[i]):
-                continue
-            seq = seq.split()[-1]
-            cmd.select(seq, 'resi ' + seq)
-            cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-            cmd.color(f'res_{seq}', seq)
-            cmd.delete(seq)
+            for i, seq in enumerate(rgb_df['title']):
+                if np.isnan(rgb_df['s'].values[i]):
+                    continue
+                parts = seq.split()
+                if len(parts) > 0:
+                    resi = parts[0]  # Extract the first part (e.g., "ABC")
+                    cmd.select(seq, 'resi ' + resi)
+                    cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
+                    cmd.color(f'res_{seq}', seq)
+                    cmd.delete(seq)
     
     cmd.ray(1000,1000)
     
