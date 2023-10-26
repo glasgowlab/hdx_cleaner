@@ -174,9 +174,10 @@ class HDXMSDataCollection:
 
 
 class HDXMSData:
-    def __init__(self, protein_name):
+    def __init__(self, protein_name, n_fastamides=2):
         self.protein_name = protein_name
         self.states = []
+        self.n_fastamides = n_fastamides
 
     def add_state(self, state):
         # Check if state already exists
@@ -333,12 +334,12 @@ class ProteinState:
 
 
 class Peptide:
-    def __init__(self, sequence, start, end, protein_state=None):
-        self.sequence = sequence
-        self.start = start
+    def __init__(self, sequence, start, end, protein_state=None, n_fastamides=2):
+        self.identifier = f"{start}-{end} {sequence}" # raw sequence without any modification
+        self.sequence = sequence[n_fastamides:]
+        self.start = start + n_fastamides
         self.end = end
         self.timepoints = []
-        self.identifier = f"{self.start}-{self.end} {self.sequence}"
         self.note = None
 
         if protein_state is not None:
@@ -532,10 +533,10 @@ class Timepoint:
     def load_raw_ms_csv(self, csv_file):
         df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
         # normalize intensity to sum to 1
-        df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
+        #df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
         self.raw_ms = df
 
-def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
+def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
     ''' 
     Load data from dataframe to HDXMSData object
 
@@ -545,7 +546,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
     cleaned: dataframe containing cleaned data
     
     '''
-    hdxms_data = HDXMSData(protein_name)
+    hdxms_data = HDXMSData(protein_name, n_fastamides)
     
     # Iterate over rows in the dataframe
     for _, row in df.iterrows():
@@ -564,7 +565,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
         # Check if peptide exists in current state
         peptide = None
         for pep in protein_state.peptides:
-            #identifier = f"{row['Start']+2}-{row['End']} {row['Sequence'][2:]}"
+            #identifier = f"{row['Start']+n_fastamides}-{row['End']} {row['Sequence'][n_fastamides:]}"
             identifier = f"{row['Start']}-{row['End']} {row['Sequence']}"
             if pep.identifier == identifier:
                 peptide = pep
@@ -575,8 +576,8 @@ def load_dataframe_to_hdxmsdata(df, protein_name="LacI"):
             # skip if peptide is less than 4 residues
             if len(row['Sequence']) < 4:
                 continue
-            #peptide = Peptide(row['Sequence'][2:], row['Start']+2, row['End'], protein_state) # skip the first two residues
-            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
+            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state, n_fastamides=n_fastamides) 
+            #peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
             protein_state.add_peptide(peptide)
         
         # Add timepoint data to peptide
@@ -614,7 +615,8 @@ def revert_hdxmsdata_to_dataframe(hdxms_data):
                     'End': pep.end,
                     'Deut Time (sec)': timepoint.deut_time,
                     '#D': timepoint.num_d,
-                    'Stddev': timepoint.stddev
+                    'Stddev': timepoint.stddev,
+                    'Charge': timepoint.charge_state
                 }
                 data_list.append(data_dict)
     
@@ -628,7 +630,8 @@ def convert_dataframe_to_bayesianhdx_format(data_df, protein_name='protein', OUT
         OUTPATH = './'
         print('No output path specified, using current directory')
     
-    data_df_renamed = data_df.rename(columns={'Sequence':'peptide_seq', 'Start':'start_res', 'End':'end_res', 'Deut Time (sec)':'time', '#D':'D_inc'})
+    data_df_renamed = data_df.rename(columns={'Sequence':'peptide_seq', 'Start':'start_res', 'End':'end_res', 'Deut Time (sec)':'time', '#D':'D_inc',
+                                              'Charge':'charge_state'})
 
     # filter out peptides with negative start or end residue (due to the His tag)
     data_df_renamed = data_df_renamed[data_df_renamed['start_res'] > 0]
@@ -733,8 +736,8 @@ def subtract_peptides(peptide_1, peptide_2):
         end = shorter_peptide.start - 1
         new_sequence = longer_peptide.sequence[0: shorter_peptide.start - longer_peptide.start]
 
-    # Create a new peptide
-    new_peptide = Peptide(sequence=new_sequence, start=start, end=end, protein_state=peptide_1.protein_state)
+    # Create a new peptide (n_fastamides=0)
+    new_peptide = Peptide(sequence=new_sequence, start=start, end=end, protein_state=peptide_1.protein_state, n_fastamides=0)
 
     # iterate over all the timepoints
     for tp in common_timepoints:
@@ -743,13 +746,6 @@ def subtract_peptides(peptide_1, peptide_2):
         new_peptide.add_timepoint(timepoints)
     new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
     return new_peptide
-
-
-def read_raw_ms_csv(csv_file):
-    df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
-    # normalize intensity to sum to 1
-    df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
-    return df
 
 
 def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
@@ -770,6 +766,7 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
             #start, end, seq = int(start)+2, int(end), seq[2:]     # skip first two res
             start, end, seq = int(start), int(end), seq
             pep_idf = f'{start}-{end} {seq}'
+            #pep_idf = f'{start+hdxms_data.n_fastamides}-{end}'
             path_dict[pep_idf] = folder
 
         
