@@ -721,9 +721,6 @@ def subtract_peptides(peptide_1, peptide_2):
     new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
     return new_peptide
 
-
-     
-
 class HDXStatePeptideCompares:
     def __init__(self, state1_list, state2_list):
         self.state1_list = state1_list
