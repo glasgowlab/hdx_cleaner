@@ -12,9 +12,7 @@ parser.add_argument('--pm', dest='pm', help="path to pymol structure")
 parser.add_argument('--t', '--tables', dest='tables', help="path to uptake table", nargs='+') #No commas between files
 parser.add_argument('--r', '--ranges', dest='ranges', help='path to ranges list csv', nargs='+') #No commas between files
 parser.add_argument('--e', '--exclude', dest='exclude', action='store_true', help='exclude rather than include rangeslist')
-parser.add_argument('--s1', dest='s1', help='first state to compare')
-parser.add_argument('--s2', dest='s2', help='second state to compare')
-parser.add_argument('--compare', dest='compare', help='dna, ligand, both', nargs=3)
+parser.add_argument('--s', dest='states', help = 'states to compare', nargs='+')
 parser.add_argument('--cbarmax', dest='cbarmax', type=float, help='max value for colorbar axis for dDbar')
 parser.add_argument('--ldmin', dest='ldmin', type=float, help='in dDbar, minimum difference threshold between ligand/dna states')
 parser.add_argument('--o', dest='outdir', help='path to output directory')
@@ -27,12 +25,15 @@ cmd.load(args.pm)
 
 ###
 #Example usage:
-#python post_pigeon_main.py --t TechRep1_peptide_pool_result.csv TechRep2_peptide_pool_result.csv  --r TechRep1_peptide_rangelist.csv TechRep2_peptide_rangelist.csv --pm 1pfk_Xray.pdb --o outputdir --cbarmax 0.5 --sub
+#python post_pigeon_main.py --t TechRep1_peptide_pool_result.csv TechRep2_peptide_pool_result.csv  --r TechRep1_peptide_rangelist.csv TechRep2_peptide_rangelist.csv --pm 1pfk_Xray.pdb --o outputdir --cbarmax 0.5 --sub --s APO ADP PEP
 ###
 
 OUTDIR = args.outdir 
 if args.outdir is None:
     OUTDIR = os.getcwd()
+
+if not os.path.exists(OUTDIR):
+    os.makedirs(OUTDIR)
 
 colorbar_max = args.cbarmax
 print("The cbarmax threshold set is: " + str(colorbar_max))
@@ -65,18 +66,18 @@ uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just d
 uptakes.add_plot_all(hdxms_data_list)
 uptakes.save_plots(OUTDIR)
 
-
 #define states for comparison: 
 from itertools import combinations
 
-items = [state.state_name for state in hdxms_data.states]
+if args.states is None: #if specific states are not specified, consider all states:
+    items = [state.state_name for state in hdxms_data.states]
+#if specific states are specified, consider only those states:
+else: 
+    items = args.states
 
 # Generate all combinations of 2 different states
 combinations_list = list(combinations(items, 2))
 print(combinations_list)
-
-if not os.path.exists(OUTDIR):
-    os.makedirs(OUTDIR)
 
 for state1_name, state2_name in combinations_list:
 
