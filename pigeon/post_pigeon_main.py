@@ -60,21 +60,25 @@ if args.subtract:
 else:
     print('PEPTIDES WILL NOT BE SUBTRACTED')
 
-# # make a uptake plot for all the peptides in hdms_data
-# uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just data points)
-# uptakes.add_plot_all(hdxms_data_list)
-# #uptakes.save_plots(OUTDIR)
+# make a uptake plot for all the peptides in hdms_data
+uptakes = UptakePlotsCollection(if_plot_fit=False) #If False, no fitting (just data points)
+uptakes.add_plot_all(hdxms_data_list)
+uptakes.save_plots(OUTDIR)
 
 
-from itertools import product
+#define states for comparison: 
+from itertools import combinations
 
-items =[state.state_name for state in hdxms_data.states]
-combinations = product(['APO'], [x for x in items if x != 'APO'])
+items = [state.state_name for state in hdxms_data.states]
+
+# Generate all combinations of 2 different states
+combinations_list = list(combinations(items, 2))
+print(combinations_list)
 
 if not os.path.exists(OUTDIR):
     os.makedirs(OUTDIR)
 
-for state1_name, state2_name in combinations:
+for state1_name, state2_name in combinations_list:
 
     state1_list = [i.get_state(state1_name) for i in hdxms_data_list if i.get_state(state1_name) is not None]
     state2_list = [i.get_state(state2_name) for i in hdxms_data_list  if i.get_state(state2_name) is not None]
@@ -82,18 +86,18 @@ for state1_name, state2_name in combinations:
     compare = HDXStatePeptideCompares(state1_list, state2_list)
     compare.add_all_compare()
 
-    # heatmap_compare_tp = create_heatmap_compare_tp(compare, 0.5)
-    # heatmap_compare_tp.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-tp.png')
+    heatmap_compare_tp = create_heatmap_compare_tp(compare, 0.5)
+    heatmap_compare_tp.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-tp.png')
 
-    # heatmap_compare = create_heatmap_compare(compare, 0.5)
-    # heatmap_compare.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap.png')
+    heatmap_compare = create_heatmap_compare(compare, 0.5)
+    heatmap_compare.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap.png')
 
-    # heatmap_compare_separated = create_heatmap_with_dotted_line(compare,0.5)
-    # heatmap_compare_separated.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-sep.png')
+    heatmap_compare_separated = create_heatmap_with_dotted_line(compare,0.5)
+    heatmap_compare_separated.savefig(f'{OUTDIR}/{state1_name}-{state2_name}-heatmap-sep.png')
 
-    create_compare_pymol_plot(compare, colorbar_max, pdb_file=args.pm, path=OUTDIR)
+    # create_compare_pymol_plot(compare, colorbar_max, pdb_file=args.pm, path=OUTDIR)
 
-    res_compares = HDXStateResidueCompares([i for i in range(1, 320)], state1_list, state2_list)
-    res_compares.add_all_compare()
+    # res_compares = HDXStateResidueCompares([i for i in range(1, 320)], state1_list, state2_list)
+    # res_compares.add_all_compare()
 
-    create_compare_pymol_plot(res_compares, colorbar_max, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
+    # create_compare_pymol_plot(res_compares, colorbar_max, pdb_file=args.pm, path=OUTDIR, save_pdb=True)
