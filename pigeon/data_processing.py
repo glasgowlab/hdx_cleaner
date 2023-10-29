@@ -26,8 +26,23 @@ def read_hdx_tables(tables, ranges, exclude=False):
 
     cleaned = pd.concat(cleaned_list, ignore_index=True)
     cleaned = clean_data_df(cleaned)
-    
+    cleaned.reset_index(inplace=True,drop=True)
     return cleaned
+
+
+# Function to find chunks between "Start RT" and "Conf"
+def find_chunks(series):
+    chunks = []
+    start_index = None
+    
+    for i, label in enumerate(series):
+        if label == 'Start RT':
+            start_index = i  # Store the index when "Start RT" is found
+        elif label == 'Conf' and start_index is not None:
+            chunks.append((start_index, i))  # Store the tuple of start and end indices
+            start_index = None  # Reset the start index
+    
+    return chunks
 
 
 def process_table(table):
@@ -38,24 +53,31 @@ def process_table(table):
     header.drop(0, inplace=True)
 
     new_df = pd.DataFrame()
-    tp_frames = bigdf.columns[8::8]
+    chunks = find_chunks(bigdf.iloc[0])
 
-    for i, tp_frame in enumerate(tp_frames):
-        new_df = process_tp_frame(header, bigdf, tp_frame, i, new_df)
+    for chunk in chunks:
+        new_df = process_tp_frame(header, bigdf, chunk, new_df)
 
     new_df['State'] = new_df['State'].str.upper().str[:3]
 
     return new_df
 
 
-def process_tp_frame(header, bigdf, tp_frame, i, new_df):
-    """Process a single tp_frame"""
-    tpdict = bigdf.iloc[:, 8+8*i:16+8*i].copy()
-    tpdict.columns = tpdict.iloc[0]
-    tpdict.drop(0, inplace=True)
-    tpdict = pd.concat([header, tpdict], axis=1)
-    tpdict['Deut Time (sec)'] = float(tp_frame.split('s')[0])
-    new_df = pd.concat([new_df, tpdict])
+def process_tp_frame(header, bigdf, tp_chunk, new_df):
+    """
+    Process a single tp_frame, tp_chunk is the index of the tp_frame
+    """
+    tp_df = bigdf.iloc[:, tp_chunk[0]:tp_chunk[1]].copy()
+    tp_df.columns = tp_df.iloc[0]
+    tp_time = bigdf.columns[tp_chunk[0]]
+    tp_df.drop(0, inplace=True)
+    tp_df = pd.concat([header, tp_df], axis=1)
+    if tp_time.startswith('Full-D'):
+        tp_df['Deut Time (sec)'] = np.Inf
+    else:
+        tp_df['Deut Time (sec)'] = float(tp_time.split('s')[0])
+    
+    new_df = pd.concat([new_df, tp_df])
 
     return new_df
 
@@ -96,7 +118,6 @@ def load_ranges_file(ranges_file, newbigdf, exclude=False):
     else:
         cleaned = newbigdf.drop_duplicates()
         print('no rangeslist !')
-
     return cleaned
 
 
@@ -360,9 +381,17 @@ class Peptide:
 
     @property
     def max_d(self):
-        num_prolines = self.sequence[2:].count('P')
-        max_d = len(self.sequence) - num_prolines # the peptide already skipped the first two residues
-        max_d = len(self.sequence)
+
+        # if no inf timepoint, return the theoretical max_d
+        inf_tp = self.get_timepoint(np.inf)
+
+        if inf_tp is None:
+            num_prolines = self.sequence[2:].count('P')
+            max_d = len(self.sequence) - num_prolines # the peptide already skipped the first two residues
+            max_d = len(self.sequence)
+        else:
+            max_d = inf_tp.num_d
+
         return max_d
     
     @property
@@ -527,14 +556,20 @@ class Timepoint:
         self.deut_time = deut_time
         self.num_d = num_d
         self.stddev = stddev
-        self.d_percent = num_d / peptide.max_d
+        #self.d_percent = num_d / peptide.max_d
         self.charge_state = charge_state
 
     def load_raw_ms_csv(self, csv_file):
         df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
         # normalize intensity to sum to 1
         #df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
-        self.raw_ms = df
+        self.raw_ms = df\
+        
+    @property
+    def d_percent(self):
+        return round(self.num_d / self.peptide.max_d * 100, 2)
+    
+
 
 def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
     ''' 
