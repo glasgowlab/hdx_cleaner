@@ -260,8 +260,8 @@ class HDXMSData:
 
         print(f"Peptide reindexed with offset {-1*index_offset}")
 
-    def to_dataframe(self):
-        return revert_hdxmsdata_to_dataframe(self)
+    def to_dataframe(self, if_percent=False):
+        return revert_hdxmsdata_to_dataframe(self, if_percent=if_percent)
     
     def to_bayesianhdx_format(self, OUTPATH=None):
         convert_dataframe_to_bayesianhdx_format(self.to_dataframe(), self.protein_name, OUTPATH)
@@ -315,7 +315,12 @@ class ProteinState:
                 pairs = list(itertools.combinations([i for i in subgroup], 2))
                 
                 for pair in pairs:
-                    new_peptide = subtract_peptides(pair[0],pair[1])
+                    #print(pair[0].identifier, pair[1].identifier)
+
+                    try:
+                        new_peptide = subtract_peptides(pair[0],pair[1])
+                    except:
+                        continue
 
                     #skip if new_peptide has less than 3 timepoints
                     if new_peptide.num_timepoints <= 3:
@@ -629,7 +634,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
 
 import pandas as pd
 
-def revert_hdxmsdata_to_dataframe(hdxms_data):
+def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
     '''
     Convert HDXMSData object to DataFrame
     '''
@@ -651,8 +656,12 @@ def revert_hdxmsdata_to_dataframe(hdxms_data):
                     'Deut Time (sec)': timepoint.deut_time,
                     '#D': timepoint.num_d,
                     'Stddev': timepoint.stddev,
-                    'Charge': timepoint.charge_state
+                    'Charge': timepoint.charge_state,
+                    'Max #D': pep.max_d,
                 }
+                if if_percent:
+                    data_dict['#D'] = timepoint.d_percent
+
                 data_list.append(data_dict)
     
     # Create DataFrame from data_list
@@ -664,9 +673,12 @@ def convert_dataframe_to_bayesianhdx_format(data_df, protein_name='protein', OUT
     if OUTPATH is None:
         OUTPATH = './'
         print('No output path specified, using current directory')
+
+    # filter out the inf timepoint
+    data_df = data_df[data_df['Deut Time (sec)'] != np.inf]
     
     data_df_renamed = data_df.rename(columns={'Sequence':'peptide_seq', 'Start':'start_res', 'End':'end_res', 'Deut Time (sec)':'time', '#D':'D_inc',
-                                              'Charge':'charge_state'})
+                                              'Charge':'charge_state', 'Max #D':'max_D'})
 
     # filter out peptides with negative start or end residue (due to the His tag)
     data_df_renamed = data_df_renamed[data_df_renamed['start_res'] > 0]
@@ -715,15 +727,15 @@ def find_overlapped_peptides(protein_state):
         
         # check if the start position is already in the dictionary
         if peptide.start in start_subgroups:
-            start_subgroups[peptide.start].append(f"{peptide.start}-{peptide.end} {peptide.sequence}")
+            start_subgroups[peptide.start].append(f"{peptide.identifier}")
         else:
-            start_subgroups[peptide.start] = [f"{peptide.start}-{peptide.end} {peptide.sequence}"]
+            start_subgroups[peptide.start] = [f"{peptide.identifier}"]
         
         # check if the end position is already in the dictionary
         if peptide.end in end_subgroups:
-            end_subgroups[peptide.end].append(f"{peptide.start}-{peptide.end} {peptide.sequence}")
+            end_subgroups[peptide.end].append(f"{peptide.identifier}")
         else:
-            end_subgroups[peptide.end] = [f"{peptide.start}-{peptide.end} {peptide.sequence}"]
+            end_subgroups[peptide.end] = [f"{peptide.identifier}"]
         
     # combine two subgroups
     combined = {**start_subgroups, **end_subgroups}
