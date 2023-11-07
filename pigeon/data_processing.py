@@ -459,9 +459,9 @@ class Peptide:
     def new_fit(self):
         from sklearn.metrics import mean_squared_error
 
-        x = np.array([tp.deut_time for tp in self.timepoints])
-        y = np.array([tp.num_d for tp in self.timepoints])
-        max_timepoint = max([tp.deut_time for tp in self.timepoints])
+        x = np.array([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
+        y = np.array([tp.num_d for tp in self.timepoints if tp.deut_time != np.inf])
+        max_timepoint = max([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
         trialT = np.logspace(1.5, np.log10(max_timepoint*2), 100)
 
         fit_resluts = {}
@@ -568,7 +568,7 @@ class Timepoint:
         df = pd.read_csv(csv_file, names=['m/z', 'Intensity'])
         # normalize intensity to sum to 1
         #df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
-        self.raw_ms = df\
+        self.raw_ms = df
         
     @property
     def d_percent(self):
@@ -647,6 +647,7 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
         for pep in state.peptides:
             # Iterate over timepoints in Peptide
             for timepoint in pep.timepoints:
+                t_inf_same_charge = pep.get_timepoint(np.inf, timepoint.charge_state)
                 # Dictionary to hold data for this timepoint
                 data_dict = {
                     'Protein State': state.state_name,
@@ -661,6 +662,9 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
                 }
                 if if_percent:
                     data_dict['#D'] = timepoint.d_percent
+
+                if t_inf_same_charge is not None:
+                    data_dict['Max #D'] = t_inf_same_charge.num_d
 
                 data_list.append(data_dict)
     

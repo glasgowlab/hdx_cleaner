@@ -178,8 +178,8 @@ class UptakePlot:
         group_std =final_group.std(numeric_only=True).reset_index()
 
 
-        start = self.identifier.split(' ')[0].split('-')[0]
-        end = self.identifier.split(' ')[0].split('-')[1]
+        start = int(self.identifier.split(' ')[0].split('-')[0])
+        end = int(self.identifier.split(' ')[0].split('-')[1])
         peptide = Peptide(self.sequence, start, end, f"averaged peptide: {state_name}")
         for i in range(len(group_mean)):
             timepoint = Timepoint(peptide, group_mean['time'][i], group_mean['deut'][i], group_std['deut'][i])
