@@ -7,7 +7,7 @@ from matplotlib import cm
 import pandas as pd
 import seaborn as sns
 import numpy as np
-from data_processing import *
+from data import *
 
 
 font = {'family' : 'Arial', 'weight' : 'normal', 'size' : 36}
@@ -372,7 +372,8 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
         pep_dict = {}
         pep_dict['title'] = pep_compare.compare_info.split(': ')[1]
         for tp, uptate_v in zip(pep_compare.common_timepoints, pep_compare.deut_diff):
-            pep_dict[int(tp)] = uptate_v
+            if tp != np.inf:
+                pep_dict[int(tp)] = uptate_v
         df = pd.concat([df, pd.DataFrame(pep_dict, index=[0])], ignore_index=True)
     df = df.set_index('title')
     #sort the columns by timepoint

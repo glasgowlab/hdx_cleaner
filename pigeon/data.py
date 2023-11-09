@@ -2,124 +2,8 @@ import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
 import itertools
-from utils import compile_exchange_info, fit_functions
-import os
-from glob import glob
-#from plot_functions import ResidueCoverage
-
-
-def read_hdx_tables(tables, ranges, exclude=False):
-    newbigdf = pd.DataFrame()
-    cleaned_list = []
-    
-    # Process all tables
-    for table, range_file in zip(tables, ranges):
-        newbigdf = process_table(table)
-
-        # Convert columns to the appropriate data types
-        newbigdf['Start'] = newbigdf['Start'].apply(np.int64)
-        newbigdf['End'] = newbigdf['End'].apply(np.int64)
-        newbigdf['#D'] = newbigdf['#D'].apply(float)
-
-        cleaned = load_ranges_file(range_file, newbigdf, exclude)
-        cleaned_list.append(cleaned)
-
-    cleaned = pd.concat(cleaned_list, ignore_index=True)
-    cleaned = clean_data_df(cleaned)
-    cleaned.reset_index(inplace=True,drop=True)
-    return cleaned
-
-
-# Function to find chunks between "Start RT" and "Conf"
-def find_chunks(series):
-    chunks = []
-    start_index = None
-    
-    for i, label in enumerate(series):
-        if label == 'Start RT':
-            start_index = i  # Store the index when "Start RT" is found
-        elif label == 'Conf' and start_index is not None:
-            chunks.append((start_index, i))  # Store the tuple of start and end indices
-            start_index = None  # Reset the start index
-    
-    return chunks
-
-
-def process_table(table):
-    """Process a single table"""
-    bigdf = pd.read_csv(table)
-    header = bigdf.iloc[:, 0:8].copy()
-    header.columns = header.iloc[0]
-    header.drop(0, inplace=True)
-
-    new_df = pd.DataFrame()
-    chunks = find_chunks(bigdf.iloc[0])
-
-    for chunk in chunks:
-        new_df = process_tp_frame(header, bigdf, chunk, new_df)
-
-    new_df['State'] = new_df['State'].str.upper().str[:3]
-
-    return new_df
-
-
-def process_tp_frame(header, bigdf, tp_chunk, new_df):
-    """
-    Process a single tp_frame, tp_chunk is the index of the tp_frame
-    """
-    tp_df = bigdf.iloc[:, tp_chunk[0]:tp_chunk[1]].copy()
-    tp_df.columns = tp_df.iloc[0]
-    tp_time = bigdf.columns[tp_chunk[0]]
-    tp_df.drop(0, inplace=True)
-    tp_df = pd.concat([header, tp_df], axis=1)
-    if tp_time.startswith('Full-D'):
-        tp_df['Deut Time (sec)'] = np.Inf
-    else:
-        tp_df['Deut Time (sec)'] = float(tp_time.split('s')[0])
-    
-    new_df = pd.concat([new_df, tp_df])
-
-    return new_df
-
-
-def clean_data_df(df):
-    df = df.groupby(['Sequence', 'Deut Time (sec)', 'State', 'Start', 'End', 'Charge'])['#D'].agg(['mean', 'std', 'count'])
-    df.reset_index(inplace=True)
-    df.rename(columns={'mean': '#D', 'std': 'Stddev', 'count': '#Rep', 'State': 'Protein State'}, inplace=True)
-
-    if 0 not in df['Deut Time (sec)'].unique():
-        tp0s = df.groupby(['Sequence', 'Protein State', 'Start', 'End', 'Charge']).sum()
-        tp0s[['Deut Time (sec)', '#D', 'Stddev']] = 0
-        tp0s['#Rep'] = 1
-        df = pd.concat([df, tp0s.reset_index()]).sort_values(by=['Start', 'End', 'Deut Time (sec)', 'Protein State'])
-
-    return df
-
-
-def load_ranges_file(ranges_file, newbigdf, exclude=False):
-    """Load the ranges file"""
-    rangeslist = RangeList(ranges_file).to_dataframe()
-
-    def exclude_ranges(newbigdf, rangeslist):
-        exc = pd.merge(newbigdf, rangeslist, how='left', indicator=True)
-        cleaned = exc[exc['_merge'] == 'left_only'].drop('_merge', axis=1)
-        return cleaned
-
-    def include_ranges(newbigdf, rangeslist):
-        cleaned = pd.merge(rangeslist, newbigdf)
-        return cleaned
-
-    if exclude:
-        cleaned = exclude_ranges(newbigdf, rangeslist)
-        print('rangeslist excluded !')
-    elif rangeslist is not None:
-        cleaned = include_ranges(newbigdf, rangeslist)
-        print('rangeslist included !')
-    else:
-        cleaned = newbigdf.drop_duplicates()
-        print('no rangeslist !')
-    return cleaned
-
+from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func
+import spectra
 
 class RangeList:
     def __init__(self, range_list_file=None, range_df=None):
@@ -360,13 +244,14 @@ class ProteinState:
 
 
 class Peptide:
-    def __init__(self, sequence, start, end, protein_state=None, n_fastamides=2):
+    def __init__(self, sequence, start, end, protein_state=None, n_fastamides=0):
         self.identifier = f"{start}-{end} {sequence}" # raw sequence without any modification
         self.sequence = sequence[n_fastamides:]
         self.start = start + n_fastamides
         self.end = end
         self.timepoints = []
         self.note = None
+        self.n_fastamides = n_fastamides
 
         if protein_state is not None:
             self.protein_state = protein_state
@@ -391,13 +276,17 @@ class Peptide:
         inf_tp = self.get_timepoint(np.inf)
 
         if inf_tp is None:
-            num_prolines = self.sequence[2:].count('P')
-            max_d = len(self.sequence) - num_prolines # the peptide already skipped the first two residues
-            max_d = len(self.sequence)
+            max_d = self.theo_max_d
         else:
             max_d = inf_tp.num_d
 
         return max_d
+
+    @property
+    def theo_max_d(self):
+        num_prolines = self.sequence[self.n_fastamides:].count('P')
+        theo_max_d = len(self.sequence) - num_prolines
+        return theo_max_d
     
     @property
     def fit_results(self):
@@ -516,44 +405,11 @@ class Peptide:
             else:
                 return None
         else:
-            timepoints = [tp for tp in self.timepoints if tp.deut_time == deut_time and tp.charge_state == str(charge_state)]
+            timepoints = [tp for tp in self.timepoints if tp.deut_time == deut_time and tp.charge_state == charge_state]
             if len(timepoints) == 1:
                 return timepoints[0]
             else:
                 return None
-
-def exchange_fit(x, a, b, c, d, e, f, g, max_d):
-    return max_d - a * np.exp(-d * x) - b * np.exp(-e * x) - c * np.exp(-f * x) - g
-
-def exchange_fit_low(x, b, c, e, f, g, max_d):
-    return max_d - b * np.exp(-e * x) - c * np.exp(-f * x) - g
-
-
-
-def exponential_sum_decorator(n):
-    def decorator(func):
-        def wrapper(*args):
-            if len(args) != 2*n + 1:
-                raise ValueError(f"Expected {2*n + 1} arguments, got {len(args)}")
-            
-            t = args[0]  # assuming the first argument is the time variable 't'
-            k_values = args[1:n+1]  # extracting the rate constants
-            max_d_values = args[n+1:]  # extracting the max deuteration levels
-            
-            result = 0
-            for k, max_d in zip(k_values, max_d_values):
-                result += func(t, k, max_d)  # call the original function with the ith rate constant, time, and max_d
-            return result
-        return wrapper
-    return decorator
-
-def fit_func(n=1):
-    @exponential_sum_decorator(n=n)
-    def single_amide_ex(t, k, max_d):
-        return max_d * (1 - np.exp(-k*t))
-    
-    return single_amide_ex
-
 
 class Timepoint:
     def __init__(self, peptide, deut_time, num_d, stddev, charge_state=None):
@@ -570,274 +426,16 @@ class Timepoint:
         #df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
         self.raw_ms = df
         
+        iso = spectra.get_isotope_envelope(self, add_sn_ratio_to_tp=True)
+        if iso is not None:
+            self.isotope_envelope = iso['Intensity'].values
+        else:
+            self.isotope_envelope = None
+
     @property
     def d_percent(self):
         return round(self.num_d / self.peptide.max_d * 100, 2)
-    
 
-
-def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
-    ''' 
-    Load data from dataframe to HDXMSData object
-
-    example usage:
-    hdxms_data = load_data_to_hdxmsdata(cleaned)
-
-    cleaned: dataframe containing cleaned data
-    
-    '''
-    hdxms_data = HDXMSData(protein_name, n_fastamides)
-    
-    # Iterate over rows in the dataframe
-    for _, row in df.iterrows():
-        # Check if protein state exists
-        protein_state = None
-        for state in hdxms_data.states:
-            if state.state_name == row['Protein State']:
-                protein_state = state
-                break
-        
-        # If protein state does not exist, create and add to HDXMSData
-        if not protein_state:
-            protein_state = ProteinState(row['Protein State'])
-            hdxms_data.add_state(protein_state)
-        
-        # Check if peptide exists in current state
-        peptide = None
-        for pep in protein_state.peptides:
-            #identifier = f"{row['Start']+n_fastamides}-{row['End']} {row['Sequence'][n_fastamides:]}"
-            identifier = f"{row['Start']}-{row['End']} {row['Sequence']}"
-            if pep.identifier == identifier:
-                peptide = pep
-                break
-        
-        # If peptide does not exist, create and add to ProteinState
-        if not peptide:
-            # skip if peptide is less than 4 residues
-            if len(row['Sequence']) < 4:
-                continue
-            peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state, n_fastamides=n_fastamides) 
-            #peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state) 
-            protein_state.add_peptide(peptide)
-        
-        # Add timepoint data to peptide
-        timepoint = Timepoint(peptide, row['Deut Time (sec)'], row['#D'], row['Stddev'],row['Charge'])
-        
-        # if timepoint has no data, skip
-        if np.isnan(timepoint.num_d):
-            continue
-        else:
-            peptide.add_timepoint(timepoint)
-    
-    return hdxms_data
-
-
-import pandas as pd
-
-def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
-    '''
-    Convert HDXMSData object to DataFrame
-    '''
-    # List to hold data
-    data_list = []
-    
-    # Iterate over states in HDXMSData
-    for state in hdxms_data.states:
-        # Iterate over peptides in ProteinState
-        for pep in state.peptides:
-            # Iterate over timepoints in Peptide
-            for timepoint in pep.timepoints:
-                t_inf_same_charge = pep.get_timepoint(np.inf, timepoint.charge_state)
-                # Dictionary to hold data for this timepoint
-                data_dict = {
-                    'Protein State': state.state_name,
-                    'Sequence': pep.sequence,
-                    'Start': pep.start,
-                    'End': pep.end,
-                    'Deut Time (sec)': timepoint.deut_time,
-                    '#D': timepoint.num_d,
-                    'Stddev': timepoint.stddev,
-                    'Charge': timepoint.charge_state,
-                    'Max #D': pep.max_d,
-                }
-                if if_percent:
-                    data_dict['#D'] = timepoint.d_percent
-
-                if t_inf_same_charge is not None:
-                    data_dict['Max #D'] = t_inf_same_charge.num_d
-
-                data_list.append(data_dict)
-    
-    # Create DataFrame from data_list
-    df = pd.DataFrame(data_list)
-    return df
-
-
-def convert_dataframe_to_bayesianhdx_format(data_df, protein_name='protein', OUTPATH=None):
-    if OUTPATH is None:
-        OUTPATH = './'
-        print('No output path specified, using current directory')
-
-    # filter out the inf timepoint
-    data_df = data_df[data_df['Deut Time (sec)'] != np.inf]
-    
-    data_df_renamed = data_df.rename(columns={'Sequence':'peptide_seq', 'Start':'start_res', 'End':'end_res', 'Deut Time (sec)':'time', '#D':'D_inc',
-                                              'Charge':'charge_state', 'Max #D':'max_D'})
-
-    # filter out peptides with negative start or end residue (due to the His tag)
-    data_df_renamed = data_df_renamed[data_df_renamed['start_res'] > 0]
-    data_df_renamed = data_df_renamed[data_df_renamed['end_res'] > 0]
-
-    # filter out the single proline
-    data_df_renamed = data_df_renamed[data_df_renamed['peptide_seq'] != 'P']
-    
-    # Save data for each state
-    states = set(data_df_renamed['Protein State'])
-    for state in states:
-        state_df = data_df_renamed[data_df_renamed['Protein State'] == state]
-        state_df.to_csv(f'{OUTPATH}/bayesian_hdx_{protein_name}_'+state+'.dat', index=False)
-
-    print(f'Data saved to {OUTPATH}')
-
-
-        
-def refine_data(hdxms_data_list):
-    '''
-    Remove peptides with large deviation across replicates
-    std > 80% * max difference between states
-    '''
-    
-
-def find_overlapped_peptides(protein_state):
-    '''
-    find overlapped peptides in the hdxms_data object that could be used for substation 
-
-    Parameters
-    ----------
-    protein_state : hdxms_data.states[0]
-        the protein state of interest
-    '''
-
-    # check the input
-    if not isinstance(protein_state, ProteinState):
-        raise TypeError("The input should be a protein state of hdxms_data object.")
-    
-    # create a dictionary to store the subgroups
-    start_subgroups = {} # subgroups with the same start position
-    end_subgroups = {} # subgroups with the same end position
-
-    # iterate over all the peptides
-    for peptide in protein_state.peptides:
-        
-        # check if the start position is already in the dictionary
-        if peptide.start in start_subgroups:
-            start_subgroups[peptide.start].append(f"{peptide.identifier}")
-        else:
-            start_subgroups[peptide.start] = [f"{peptide.identifier}"]
-        
-        # check if the end position is already in the dictionary
-        if peptide.end in end_subgroups:
-            end_subgroups[peptide.end].append(f"{peptide.identifier}")
-        else:
-            end_subgroups[peptide.end] = [f"{peptide.identifier}"]
-        
-    # combine two subgroups
-    combined = {**start_subgroups, **end_subgroups}
-    subgroups = {}
-    for key in combined.keys():
-        value = list(set(combined[key]))
-        if len(value) > 1:
-            subgroups[key] = [protein_state.get_peptide(idf) for idf in value]
-
-    return subgroups
-
-def subtract_peptides(peptide_1, peptide_2):
-    """
-    Subtract two peptides and create a new peptide.
-    """
-    # Check if the two peptides have the same length
-    if peptide_1.sequence == peptide_2.sequence:
-        raise ValueError("Cannot subtract the same two peptides.")
-    
-    if peptide_1.start != peptide_2.start and peptide_1.end != peptide_2.end:
-        raise ValueError("start or end need to be the different.")
-    
-    if peptide_1.protein_state.state_name != peptide_2.protein_state.state_name:
-        raise  ValueError("Cannot subtract peptides from different states.")
-    
-    # get longer peptide and shorter peptide
-    if len(peptide_1.sequence) > len(peptide_2.sequence):
-        longer_peptide = peptide_1
-        shorter_peptide = peptide_2
-    else:
-        longer_peptide = peptide_2
-        shorter_peptide = peptide_1
-
-    timepoints1 = set([tp.deut_time for tp in longer_peptide.timepoints])
-    timepoints2 = set([tp.deut_time for tp in shorter_peptide.timepoints])
-    common_timepoints = list(timepoints1.intersection(timepoints2))
-    common_timepoints.sort()
-
-    if shorter_peptide.start == longer_peptide.start:
-        start = shorter_peptide.end + 1
-        end = longer_peptide.end 
-        new_sequence = longer_peptide.sequence[shorter_peptide.end - shorter_peptide.start +1 : longer_peptide.end - longer_peptide.start +1]
-    else:
-        start = longer_peptide.start
-        end = shorter_peptide.start - 1
-        new_sequence = longer_peptide.sequence[0: shorter_peptide.start - longer_peptide.start]
-
-    # Create a new peptide (n_fastamides=0)
-    new_peptide = Peptide(sequence=new_sequence, start=start, end=end, protein_state=peptide_1.protein_state, n_fastamides=0)
-
-    # iterate over all the timepoints
-    for tp in common_timepoints:
-        std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
-        timepoints = Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
-        new_peptide.add_timepoint(timepoints)
-    new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
-    return new_peptide
-
-
-def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
-    '''
-    Load raw MS data from csv files to hdxms_data object. 
-    !!! use it before reindex_peptide_from_pdb
-    '''
-    for state in hdxms_data.states:
-
-        state_raw_spectra_path = os.path.join(raw_spectra_path, state.state_name)
-        
-        # glob all the folders
-        path_dict = {}
-        folders = sorted(glob(state_raw_spectra_path + '/*'))
-
-        for folder in folders:
-            start, end, seq = folder.split('/')[-1].split('-')
-            #start, end, seq = int(start)+2, int(end), seq[2:]     # skip first two res
-            start, end, seq = int(start), int(end), seq
-            pep_idf = f'{start}-{end} {seq}'
-            #pep_idf = f'{start+hdxms_data.n_fastamides}-{end}'
-            path_dict[pep_idf] = folder
-
-        
-        # iterate through all peptides
-        for peptide in state.peptides:
-            pep_sub_folder =  path_dict[peptide.identifier]
-
-
-            for tp in peptide.timepoints:
-                if tp.deut_time == 0:
-                    csv_name = f'Non-D-1-z{tp.charge_state}.csv'
-                else:
-                    csv_name = f'{int(tp.deut_time)}s-1-z{tp.charge_state}.csv'
-                
-                csv_file_path = os.path.join(pep_sub_folder, csv_name)
-                df = tp.load_raw_ms_csv(csv_file_path)
-                #print(csv_file_path)
-
-    print('Done loading raw MS data.')
-     
 
 class HDXStatePeptideCompares:
     def __init__(self, state1_list, state2_list):
