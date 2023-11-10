@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from scipy.optimize import curve_fit
 import itertools
-from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func
+from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func, average_timepoints
 import spectra
 
 class RangeList:
@@ -214,9 +214,16 @@ class ProteinState:
                         continue  
 
                     #skip if new_peptide is negative
-                    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.5:
+                    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3:
                         continue
-
+                    
+                    #skip if new_peptide has high recaculated num_d error
+                    if hasattr(new_peptide.timepoints[0], 'isotope_envelope'):
+                        from tools import get_num_d_from_iso
+                        avg_error = np.abs(np.average([tp.num_d - get_num_d_from_iso(tp) for tp in new_peptide.timepoints]))
+                        if avg_error > 0.15:
+                            continue
+                    
                     # add the new peptide to the protein state object
                     try:
                         self.add_peptide(new_peptide)
@@ -400,7 +407,8 @@ class Peptide:
                 return timepoints[0]
             
             elif len(timepoints) > 1:
-                avg_timepoint = Timepoint(self, deut_time, np.average([tp.num_d for tp in timepoints]), np.std([tp.num_d for tp in timepoints]))
+                #avg_timepoint = Timepoint(self, deut_time, np.average([tp.num_d for tp in timepoints]), np.std([tp.num_d for tp in timepoints]))
+                avg_timepoint = average_timepoints(timepoints)
                 return avg_timepoint
             else:
                 return None

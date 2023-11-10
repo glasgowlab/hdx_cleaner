@@ -1,9 +1,10 @@
 from data import HDXMSData, ProteinState, Peptide, Timepoint, RangeList
+from spectra import refine_large_error_reps
+import tools
 import numpy as np
 import pandas as pd
 import os
 from glob import glob
-import tools
 
 def read_hdx_tables(tables, ranges, exclude=False):
     newbigdf = pd.DataFrame()
@@ -289,5 +290,25 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
 
     print('Done loading raw MS data.')
      
+    for state in hdxms_data.states:
+        refine_large_error_reps(state)
 
+
+def export_iso_files(hdxms_data, outdir, overwrite=True):
+    import shutil
+    if not os.path.exists(outdir):
+        os.mkdir(outdir)
+    else:
+        if overwrite:
+            shutil.rmtree(outdir)
+            os.mkdir(outdir)
+
+    all_tps = [tp for state in hdxms_data.states for peptide in state.peptides for tp in peptide.timepoints]
+    
+    for tp in all_tps:
+        state = tp.peptide.protein_state.state_name
+        idf = tp.peptide.identifier.split(' ')[0] + '-' + tp.peptide.identifier.split(' ')[1]
+        npy_file_name = f'{state}_{idf}_tp{int(tp.deut_time)}_ch{tp.charge_state}.npy'
+        np.save(os.path.join(outdir, npy_file_name), tp.isotope_envelope)
+    print(f'Isotope files saved to {outdir}')
     

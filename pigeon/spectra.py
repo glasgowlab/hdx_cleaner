@@ -174,7 +174,7 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     
     mz_start, mz_end = np.where(tp_deut_iso_theo> 0.01)[0][0], np.where(tp_deut_iso_theo> 0.01)[0][-1]
     #print(mz_start, mz_end)
-    for mz_int in range(mz_end+1):
+    for mz_int in range(mz_start, mz_end+1):
         mask = (df_picked['m/z'] >= mz_int*1.00866491588-0.03) & (df_picked['m/z'] <= mz_int*1.00866491588+0.03)
         peaks_in_range = df_picked[mask]        
         if not peaks_in_range.empty:
@@ -330,25 +330,12 @@ def filter_peak_pickings(data):
 
 def refine_large_error_reps(state):
     
-    #while True:
-    flat_large_error_list = flat_tp_list(get_large_error_tps(state, threshold=1.0))
-
-    for tp in flat_large_error_list:
-        try:
-            #tp.isotope_envelope = filter_by_thoe_ms(tp)
-            tp.isotope_envelope = filter_peak_pickings(tp.isotope_envelope)
-        except:
-            print(tp.peptide.sequence, tp.deut_time,)
-
-
-    flat_large_error_list = flat_tp_list(get_large_error_tps(state, threshold=1.2))
-    # if flat_large_error_list == []:
-    #         break
+    low_intens_tps = find_low_intensity_tps(get_large_error_tps(state, threshold=0.3), threshold=5)
+    tools.remove_tps_from_state(low_intens_tps, state)
+    
+    flat_large_error_list = flat_tp_list(get_large_error_tps(state, threshold=0.5)) 
     tools.remove_tps_from_state(flat_large_error_list, state)
 
-    flat_large_error_list = get_large_error_tps(state, threshold=1.0)
-    low_intens_tps = find_low_intensity_tps(flat_large_error_list, threshold=5)
-    tools.remove_tps_from_state(low_intens_tps, state)
 
 
         

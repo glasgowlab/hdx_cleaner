@@ -96,10 +96,73 @@ def subtract_peptides(peptide_1, peptide_2):
     # iterate over all the timepoints
     for tp in common_timepoints:
         std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
-        timepoints = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
-        new_peptide.add_timepoint(timepoints)
+        timepoint = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
+        try:
+            timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
+        except:
+            #print('No isotope envelope found for timepoint')
+            pass
+        new_peptide.add_timepoint(timepoint)
     new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
     return new_peptide
+
+
+def average_timepoints(tps_list):
+
+    # check if the same state, peptide, and timepoint
+    if len(set([(tp.peptide.protein_state.state_name, tp.peptide.identifier, tp.deut_time) for tp in tps_list])) != 1:
+        raise ValueError('Timepoints must be from the same state, peptide, and timepoint')
+
+    deut_time = tps_list[0].deut_time
+    num_d = np.average([tp.num_d for tp in tps_list])
+    std_d = np.std([tp.num_d for tp in tps_list])
+    
+    avg_timepoint = data.Timepoint(tps_list[0].peptide, deut_time, num_d, std_d)
+    try:
+        
+        size = max([tp.isotope_envelope.size for tp in tps_list])
+        iso_list = [custom_pad(tp.isotope_envelope, size, pad_value=0.0) for tp in tps_list]
+        avg_iso = np.average(iso_list, axis=0)
+        avg_timepoint.isotope_envelope = avg_iso/np.sum(avg_iso)
+                
+    except:
+        print('No isotope envelope found for timepoint')
+    
+    return avg_timepoint
+
+
+def deconvolute(p, p1):
+    # Compute the Fourier Transforms
+    P = np.fft.fft(p)
+    P1 = np.fft.fft(p1, n=len(p))  # Make sure the arrays have the same length
+    
+    # Division in the Frequency Domain
+    P2 = P / P1
+    
+    # Compute the Inverse Fourier Transform
+    p2 = np.fft.ifft(P2).real  # Take the real part to ignore small numerical errors
+
+    #wipe the negative values to 1e-10
+    p2[p2 < 0] = 1e-10
+    p2 = p2 / np.sum(p2)
+
+    return p2
+
+
+
+def get_centroid_iso(tp):
+    mz = np.arange(0, len(tp.isotope_envelope))
+    intensity = tp.isotope_envelope
+    return mz @ intensity
+
+
+def get_t0_centroid_iso(tp):
+    t0_centroid_iso = [get_centroid_iso(tp) for tp in tp.peptide.timepoints if tp.deut_time == 0]
+    return np.average(t0_centroid_iso)
+    
+    
+def get_num_d_from_iso(tp):
+    return (get_centroid_iso(tp) - get_t0_centroid_iso(tp))/1.00866491588
 
 
 
