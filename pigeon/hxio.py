@@ -119,7 +119,7 @@ def load_ranges_file(ranges_file, newbigdf, exclude=False):
     return cleaned
 
 
-def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
+def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein_sequence=None):
     ''' 
     Load data from dataframe to HDXMSData object
 
@@ -129,7 +129,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
     cleaned: dataframe containing cleaned data
     
     '''
-    hdxms_data = HDXMSData(protein_name, n_fastamides)
+    hdxms_data = HDXMSData(protein_name, n_fastamides, protein_sequence=protein_sequence)
     
     # Iterate over rows in the dataframe
     for _, row in df.iterrows():
@@ -142,7 +142,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2):
         
         # If protein state does not exist, create and add to HDXMSData
         if not protein_state:
-            protein_state = ProteinState(row['Protein State'])
+            protein_state = ProteinState(row['Protein State'], hdxms_data=hdxms_data)
             hdxms_data.add_state(protein_state)
         
         # Check if peptide exists in current state
@@ -192,15 +192,26 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
             for timepoint in pep.timepoints:
                 t_inf_same_charge = pep.get_timepoint(np.inf, timepoint.charge_state)
                 # Dictionary to hold data for this timepoint
+
+                #raw idf with fastamides
+                if pep.n_fastamides == 2:
+                    start, end, = pep.identifier.split(' ')[0].split('-')
+                    start, end = int(start), int(end)
+                    seq = pep.identifier.split(' ')[1]
+                elif pep.n_fastamides == 0:
+                    start = pep.start - 2
+                    end = pep.end
+                    seq = hdxms_data.protein_sequence[start-1:end] # -1 to account for python indexing
+
                 data_dict = {
                     'Protein State': state.state_name,
-                    'Sequence': pep.sequence,
-                    'Start': pep.start,
-                    'End': pep.end,
+                    'Sequence': seq,
+                    'Start': start,
+                    'End': end,
                     'Deut Time (sec)': timepoint.deut_time,
                     '#D': timepoint.num_d,
                     'Stddev': timepoint.stddev,
-                    'Charge': timepoint.charge_state,
+                    'Charge': str(timepoint.charge_state),
                     'Max #D': pep.max_d,
                 }
                 if if_percent:
@@ -213,6 +224,7 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
     
     # Create DataFrame from data_list
     df = pd.DataFrame(data_list)
+    print('Reminder: sequence contains fastamides !!!')
     return df
 
 
@@ -265,14 +277,17 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
             #pep_idf = f'{start+hdxms_data.n_fastamides}-{end}'
             path_dict[pep_idf] = folder
 
-        bad_timepoints = []
+
         # iterate through all peptides
         for peptide in state.peptides:
             pep_sub_folder =  path_dict[peptide.identifier]
 
 
             for tp in peptide.timepoints:
-                if tp.deut_time == 0:
+                if tp.deut_time == np.inf:
+                    tp.isotope_envelope = None
+                    continue
+                elif tp.deut_time == 0:
                     csv_name = f'Non-D-1-z{tp.charge_state}.csv'
                 else:
                     csv_name = f'{int(tp.deut_time)}s-1-z{tp.charge_state}.csv'
@@ -283,9 +298,8 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                 except:
                     print(peptide.identifier, tp.deut_time, tp.charge_state)
                 #print(csv_file_path)
-                if tp.isotope_envelope is None:
-                    bad_timepoints.append(tp)
                 
+        bad_timepoints = [tp for peptide in state.peptides for tp in peptide.timepoints if tp.isotope_envelope is None and tp.deut_time != np.inf]
         tools.remove_tps_from_state(bad_timepoints, state)
 
     print('Done loading raw MS data.')
@@ -303,12 +317,22 @@ def export_iso_files(hdxms_data, outdir, overwrite=True):
             shutil.rmtree(outdir)
             os.mkdir(outdir)
 
-    all_tps = [tp for state in hdxms_data.states for peptide in state.peptides for tp in peptide.timepoints]
+    all_tps = [tp for state in hdxms_data.states for peptide in state.peptides for tp in peptide.timepoints if tp.deut_time != np.inf]
     
     for tp in all_tps:
         state = tp.peptide.protein_state.state_name
-        idf = tp.peptide.identifier.split(' ')[0] + '-' + tp.peptide.identifier.split(' ')[1]
+        
+        #raw idf with fastamides
+        if tp.peptide.n_fastamides == 2:
+            start, end, = tp.peptide.identifier.split(' ')[0].split('-')
+            seq = tp.peptide.identifier.split(' ')[1]
+        elif tp.peptide.n_fastamides == 0:
+            start = tp.peptide.start - 2
+            end = tp.peptide.end
+            seq = hdxms_data.protein_sequence[start-1:end] # -1 to account for python indexing
+
+        idf = f'{start}-{end}-{seq}'
         npy_file_name = f'{state}_{idf}_tp{int(tp.deut_time)}_ch{tp.charge_state}.npy'
         np.save(os.path.join(outdir, npy_file_name), tp.isotope_envelope)
     print(f'Isotope files saved to {outdir}')
-    
+    print('Reminder: sequence contains fastamides !!!')

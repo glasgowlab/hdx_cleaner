@@ -79,10 +79,13 @@ class HDXMSDataCollection:
 
 
 class HDXMSData:
-    def __init__(self, protein_name, n_fastamides=2):
+    def __init__(self, protein_name, n_fastamides=2, protein_sequence=None):
         self.protein_name = protein_name
         self.states = []
         self.n_fastamides = n_fastamides
+        if protein_sequence is None:
+            raise ValueError("Protein sequence is required")
+        self.protein_sequence = protein_sequence
 
     def add_state(self, state):
         # Check if state already exists
@@ -157,11 +160,12 @@ class HDXMSData:
           
 
 class ProteinState:
-    def __init__(self, state_name):
+    def __init__(self, state_name, hdxms_data=None):
         self.peptides = []
         self.state_name = state_name
         self.if_subtracted = False
         self.num_subtracted_added = 0
+        self.hdxms_data = hdxms_data
 
     def add_peptide(self, peptide):
         # Check if peptide already exists

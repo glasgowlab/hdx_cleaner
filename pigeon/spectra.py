@@ -229,7 +229,7 @@ def get_large_error_tps(state, threshold=1.5):
 
     timepoints_list = []
     for pep in state.peptides:
-        grouped_timepoints = [list(v) for k, v in groupby(pep.timepoints, key=attrgetter('deut_time'))]
+        grouped_timepoints = [list(v) for k, v in groupby([tp for tp in pep.timepoints if tp.deut_time != np.inf], key=attrgetter('deut_time'))]
         for grouped_i in grouped_timepoints:
             timepoints_list.append(grouped_i)
     

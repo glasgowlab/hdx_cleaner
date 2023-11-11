@@ -97,13 +97,16 @@ def subtract_peptides(peptide_1, peptide_2):
     for tp in common_timepoints:
         std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
         timepoint = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
-        try:
-            timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
-        except:
-            #print('No isotope envelope found for timepoint')
-            pass
-        new_peptide.add_timepoint(timepoint)
-    new_peptide.note = f"Subtracted from {longer_peptide.identifier} to {shorter_peptide.identifier}"
+        if hasattr(longer_peptide.timepoints[0], 'isotope_envelope') and hasattr(shorter_peptide.timepoints[0], 'isotope_envelope'):
+            try:
+                timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
+                new_peptide.add_timepoint(timepoint)
+            except:
+                #print('No isotope envelope found for timepoint')
+                continue
+        else:
+            new_peptide.add_timepoint(timepoint)
+    new_peptide.note = f"Subtraction: {longer_peptide.identifier} - {shorter_peptide.identifier}"
     return new_peptide
 
 
@@ -126,7 +129,8 @@ def average_timepoints(tps_list):
         avg_timepoint.isotope_envelope = avg_iso/np.sum(avg_iso)
                 
     except:
-        print('No isotope envelope found for timepoint')
+        #print('No isotope envelope found for timepoint')
+        pass
     
     return avg_timepoint
 
@@ -305,10 +309,8 @@ def remove_tps_from_state(removing_tps, state):
 
     # remove the replicates from the state
     for pep in state.peptides:
-        for tp in pep.timepoints:
-            if tp in removing_tps:
-                pep.timepoints.remove(tp)
-                #print(f'{pep.identifier} {tp.deut_time} {tp.charge_state} removed')
+        pep.timepoints = [tp for tp in pep.timepoints if tp not in removing_tps]
+        #print(f'{pep.identifier} {tp.deut_time} {tp.charge_state} removed')
 
         # Remove peptides without timepoints or with no time 0
         if pep.timepoints == []:
