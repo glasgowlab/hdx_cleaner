@@ -338,6 +338,24 @@ def refine_large_error_reps(state):
 
 
 
+def calculate_isoenv_std(hdxms_data_list:list):
+    '''
+    calculate the standard deviation of isotope envelopes for each peptide
+    input: a list of hdxms_data
+    '''
+    all_peptides = [peptide for data in hdxms_data_list for state in data.states for peptide in state.peptides]
+    for k, v in tools.group_by_attributes(all_peptides, ['protein_state.state_name', 'identifier',]).items():
+        tps = [tp for pep in v for tp in pep.timepoints if tp.deut_time != np.inf]
+        for tp_k, tp_v in tools.group_by_attributes(tps, ['deut_time']).items():
+            iso_list = [tp.isotope_envelope for tp in tp_v]
+            max_len = max([len(l) for l in iso_list])
+            padded_iso_list = [tools.custom_pad(iso, max_len) for iso in iso_list]
+            iso_std = np.std(padded_iso_list, axis=0)
+            for tp_i in tp_v:
+                tp_i.isotope_envelope = tools.custom_pad(tp_i.isotope_envelope, max_len)
+                tp_i.isotope_envelope_std = iso_std
+
+    print('standard deviation of isotope envelopes calculated')
         
 
 

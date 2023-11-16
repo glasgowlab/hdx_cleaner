@@ -1,6 +1,7 @@
 import data
 import numpy as np
 import pandas as pd
+from spectra import get_theo_ms
 
 
         
@@ -81,6 +82,7 @@ def subtract_peptides(peptide_1, peptide_2):
     common_timepoints = list(timepoints1.intersection(timepoints2))
     common_timepoints.sort()
 
+
     if shorter_peptide.start == longer_peptide.start:
         start = shorter_peptide.end + 1
         end = longer_peptide.end 
@@ -93,20 +95,49 @@ def subtract_peptides(peptide_1, peptide_2):
     # Create a new peptide (n_fastamides=0)
     new_peptide = data.Peptide(sequence=new_sequence, start=start, end=end, protein_state=peptide_1.protein_state, n_fastamides=0)
 
+
+    # return None if:
+    #skip if new_peptide has less than 3 timepoints
+    if len(common_timepoints) <= 3:
+        return None
+    #skip if new_peptide is single Proline
+    if new_peptide.sequence == 'P':
+        return None  
+
     # iterate over all the timepoints
     for tp in common_timepoints:
         std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
         timepoint = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
-        if hasattr(longer_peptide.timepoints[0], 'isotope_envelope') and hasattr(shorter_peptide.timepoints[0], 'isotope_envelope'):
-            try:
-                timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
-                new_peptide.add_timepoint(timepoint)
-            except:
-                #print('No isotope envelope found for timepoint')
-                continue
+        
+        longer_tp = longer_peptide.get_timepoint(tp)
+        shorter_tp = shorter_peptide.get_timepoint(tp)
+
+        if hasattr(longer_tp, 'isotope_envelope') and hasattr(shorter_tp, 'isotope_envelope') and tp != np.inf:
+
+            #timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
+            p1 = longer_tp.isotope_envelope.copy()
+            p2 = shorter_tp.isotope_envelope.copy()
+            p3 = get_theo_ms(timepoint)
+            best_model = deconvolute_iso(p1, p2, p3, steps=2000)
+            timepoint.isotope_envelope = best_model[1]
+            new_peptide.add_timepoint(timepoint)
+
         else:
             new_peptide.add_timepoint(timepoint)
+    
+    if len(new_peptide.timepoints) < 3:
+        return None        
+    
+    #skip if new_peptide is negative
+    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3:
+        return None  
+
     new_peptide.note = f"Subtraction: {longer_peptide.identifier} - {shorter_peptide.identifier}"
+
+    # if 0.0 not in [tp.deut_time for tp in new_peptide.timepoints]:
+    #     print(longer_peptide.identifier, shorter_peptide.identifier)
+    #     raise ValueError("Cannot subtract peptides without time 0.")
+
     return new_peptide
 
 
@@ -135,24 +166,92 @@ def average_timepoints(tps_list):
     return avg_timepoint
 
 
-def deconvolute(p, p1):
-    # Compute the Fourier Transforms
-    P = np.fft.fft(p)
-    P1 = np.fft.fft(p1, n=len(p))  # Make sure the arrays have the same length
+# def deconvolute(p, p1):
+#     # Compute the Fourier Transforms
+#     P = np.fft.fft(p)
+#     P1 = np.fft.fft(p1, n=len(p))  # Make sure the arrays have the same length
     
-    # Division in the Frequency Domain
-    P2 = P / P1
+#     # Division in the Frequency Domain
+#     P2 = P / P1
     
-    # Compute the Inverse Fourier Transform
-    p2 = np.fft.ifft(P2).real  # Take the real part to ignore small numerical errors
+#     # Compute the Inverse Fourier Transform
+#     p2 = np.fft.ifft(P2).real  # Take the real part to ignore small numerical errors
 
-    #wipe the negative values to 1e-10
-    p2[p2 < 0] = 1e-10
-    p2 = p2 / np.sum(p2)
+#     #wipe the negative values to 1e-10
+#     p2[p2 < 0] = 1e-10
+#     p2 = p2 / np.sum(p2)
 
-    return p2
+#     return p2
 
 
+
+def metropolis_criterion(old_loss, new_loss, temperature):
+    if new_loss < old_loss:
+        return True
+    else:
+        delta_loss = new_loss - old_loss
+        probability = np.exp(-delta_loss / temperature)
+        return np.random.rand() < probability
+    
+
+
+def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
+    '''
+    Deconvolution function that updates p3 all at once.
+    p3: initial guess
+    '''
+
+    max_length = max(p1.size, p2.size)
+    p1 = custom_pad(p1, max_length)
+    p2 = custom_pad(p2, max_length)
+    p3 = p3[:max_length] / np.sum(p3[:max_length])
+    
+    p1_estimated = convolve(p3, p2)
+    p1_estimated = normlize(p1_estimated)
+    previous_loss = get_sum_ae(p1, p1_estimated)
+    
+    best_models = []
+    
+    continus_rejects = 0
+
+    for i in range(steps):
+        original_p3 = p3.copy()
+        change = np.random.normal(0, 0.2, p3.size)  # Generate change for the entire p3 array
+        p3 += change
+        p3[p3 < 0] = 1e-10  # Prevent negative values
+        p3 = normlize(p3)  # Normalize p3
+
+        # Calculate new loss
+        p1_estimated = convolve(p3, p2)
+        p1_estimated = normlize(p1_estimated)
+        new_loss = get_sum_ae(p1, p1_estimated)
+
+
+        if new_loss < 0.1 or continus_rejects > 100:
+            break
+
+        # Decide whether to accept the change
+        if metropolis_criterion(previous_loss, new_loss, temperature):
+            previous_loss = new_loss
+            continus_rejects = 0
+        else:
+            # Revert the change
+            p3 = original_p3
+            continus_rejects += 1
+
+        best_models.append((previous_loss, p3.copy()))
+
+        temperature *= 0.99  # Decrease the temperature
+
+        # if i % 100 == 0:
+        #     print(i, previous_loss) 
+    # print(i, previous_loss)
+    best_models.sort(key=lambda x: x[0])
+    
+
+    return best_models[0]
+
+    
 
 def get_centroid_iso(tp):
     mz = np.arange(0, len(tp.isotope_envelope))
@@ -205,6 +304,15 @@ def exchange_fit_low(x, b, c, e, f, g, max_d):
 
 
 from numba import njit
+
+@njit
+def normlize(p):
+    return p / np.sum(p)
+
+@njit
+def convolve(p1, p2):
+    return np.convolve(p1, p2)
+
 
 @njit
 def custom_kl_divergence(p, q):
@@ -326,3 +434,22 @@ def remove_tps_from_state(removing_tps, state):
     #n_tp = len([tp for pep in state.peptides for tp in pep.timepoints])
     #print(f'Number of timepoints after removing: {n_tp}')
     
+
+
+from collections import defaultdict
+
+def group_by_attributes(objects, attributes):
+    grouped_data = defaultdict(list)
+    for obj in objects:
+        key = []
+        for attr in attributes:
+            if '.' in attr:
+                nested_attrs = attr.split('.')
+                value = obj
+                for na in nested_attrs:
+                    value = getattr(value, na)
+                key.append(value)
+            else:
+                key.append(getattr(obj, attr))
+        grouped_data[tuple(key)].append(obj)
+    return grouped_data

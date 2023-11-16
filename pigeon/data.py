@@ -205,26 +205,26 @@ class ProteinState:
                 for pair in pairs:
                     #print(pair[0].identifier, pair[1].identifier)
 
+                    # skip if the new peptide already exists
+                    note1 = f"Subtraction: {pair[0].identifier} - {pair[1].identifier}"
+                    note2 = f"Subtraction: {pair[1].identifier} - {pair[0].identifier}"
+                    notes = [pep.note for pep in self.peptides if pep.note is not None]
+                    if note1 in notes or note2 in notes:
+                        continue
+
                     try:
                         new_peptide = subtract_peptides(pair[0],pair[1])
                     except:
                         continue
 
-                    #skip if new_peptide has less than 3 timepoints
-                    if new_peptide.num_timepoints <= 3:
-                        continue
-                    #skip if new_peptide is single Proline
-                    if new_peptide.sequence == 'P':
-                        continue  
-
-                    #skip if new_peptide is negative
-                    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3:
+                    # skil if a None peptide is returned
+                    if new_peptide is None:
                         continue
                     
                     #skip if new_peptide has high recaculated num_d error
                     if hasattr(new_peptide.timepoints[0], 'isotope_envelope'):
                         from tools import get_num_d_from_iso
-                        avg_error = np.abs(np.average([tp.num_d - get_num_d_from_iso(tp) for tp in new_peptide.timepoints]))
+                        avg_error = np.abs(np.average([tp.num_d - get_num_d_from_iso(tp) for tp in new_peptide.timepoints if tp.deut_time != np.inf]))
                         if avg_error > 0.15:
                             continue
                     
@@ -242,7 +242,7 @@ class ProteinState:
         self.num_subtracted_added += len(new_peptide_added)
         return new_peptide_added
 
-    def  add_all_subtract(self):
+    def add_all_subtract(self):
         if self.if_subtracted:
             print(f"{self.num_subtracted_added} subtracted peptides have already been subtracted.")
 
