@@ -351,9 +351,17 @@ def calculate_isoenv_std(hdxms_data_list:list):
             max_len = max([len(l) for l in iso_list])
             padded_iso_list = [tools.custom_pad(iso, max_len) for iso in iso_list]
             iso_std = np.std(padded_iso_list, axis=0)
+            
+            num_d_list = [tp.num_d for tp in tp_v]
+            num_d_std = np.std(num_d_list)
+
+            percent_d_list = [tp.percent_d for tp in tp_v]
+            percent_d_std = np.std(percent_d_list)
             for tp_i in tp_v:
                 tp_i.isotope_envelope = tools.custom_pad(tp_i.isotope_envelope, max_len)
                 tp_i.isotope_envelope_std = iso_std
+                tp_i.stddev = num_d_std
+                tp_i.percent_d_std = percent_d_std
 
     print('standard deviation of isotope envelopes calculated')
         

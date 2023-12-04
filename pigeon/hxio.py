@@ -300,7 +300,9 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                 #print(csv_file_path)
                 
         bad_timepoints = [tp for peptide in state.peptides for tp in peptide.timepoints if tp.isotope_envelope is None and tp.deut_time != np.inf]
+        high_back_ex_tps = [tp for pep in state.peptides for tp in pep.timepoints if pep.max_d/pep.theo_max_d < 0.5]
         tools.remove_tps_from_state(bad_timepoints, state)
+        tools.remove_tps_from_state(high_back_ex_tps, state)
 
     print('Done loading raw MS data.')
      

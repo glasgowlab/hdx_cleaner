@@ -129,7 +129,7 @@ def subtract_peptides(peptide_1, peptide_2):
         return None        
     
     #skip if new_peptide is negative
-    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3:
+    if np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3 or new_peptide.max_d < 0.0:
         return None  
 
     new_peptide.note = f"Subtraction: {longer_peptide.identifier} - {shorter_peptide.identifier}"
@@ -227,9 +227,6 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
         new_loss = get_sum_ae(p1, p1_estimated)
 
 
-        if new_loss < 0.1 or continus_rejects > 100:
-            break
-
         # Decide whether to accept the change
         if metropolis_criterion(previous_loss, new_loss, temperature):
             previous_loss = new_loss
@@ -242,6 +239,9 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
         best_models.append((previous_loss, p3.copy()))
 
         temperature *= 0.99  # Decrease the temperature
+
+        if new_loss < 0.1 or continus_rejects > 100:
+            break
 
         # if i % 100 == 0:
         #     print(i, previous_loss) 
@@ -453,3 +453,23 @@ def group_by_attributes(objects, attributes):
                 key.append(getattr(obj, attr))
         grouped_data[tuple(key)].append(obj)
     return grouped_data
+
+
+
+def backexchange_for_peps_no_data(hdxms_data_list):
+    '''
+    Calculate the average backexchange for all peptides in the list of hdxms_data objects and correct the peptides has no data
+    '''
+
+    all_peps = [pep for data in hdxms_data_list for state in data.states for pep in state.peptides]
+    pep_with_exp_mad_d = [pep for pep in all_peps if pep.max_d != pep.theo_max_d]
+    avg_backexchange = np.mean([pep.max_d/pep.theo_max_d for pep in pep_with_exp_mad_d])
+    
+    pep_with_no_exp_mad_d = [pep for pep in all_peps if pep.max_d == pep.theo_max_d]
+    for pep in pep_with_no_exp_mad_d:
+        max_d = pep.theo_max_d * avg_backexchange
+        inf_tp = data.Timepoint(pep, np.inf, max_d, np.nan)
+        pep.add_timepoint(inf_tp)
+       
+
+    print('Average backexchange for peptides with no data: {}'.format(avg_backexchange))

@@ -4,6 +4,9 @@ from scipy.optimize import curve_fit
 import itertools
 from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func, average_timepoints
 import spectra
+from hdxrate import k_int_from_sequence
+import random
+
 
 class RangeList:
     def __init__(self, range_list_file=None, range_df=None):
@@ -362,7 +365,7 @@ class Peptide:
         x = np.array([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
         y = np.array([tp.num_d for tp in self.timepoints if tp.deut_time != np.inf])
         max_timepoint = max([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
-        trialT = np.logspace(1.5, np.log10(max_timepoint*2), 100)
+        trialT = np.logspace(1.0, np.log10(max_timepoint*2), 100)
 
         fit_resluts = {}
         for exp_num in range(1, 5):
@@ -638,4 +641,119 @@ class ResidueCompare:
         result = deut1_array.mean() - deut2_array.mean()
         return result
 
+
+class SimulatedData:
+    def __init__(self, length=100, seed=42):
+
+        random.seed(seed)
+        self.length = length
+        self.gen_seq()
+        self.gen_logP()
+        self.cal_k_init()
+        self.timepoints = np.insert(np.logspace(1, 12, 10), 0, 0)
+
+
+
+    def gen_seq(self,):
+
+        AA_list = ['A','R','N','D','C','Q','E','G','H','I','L','K','M','F','P','S','T','W','Y','V']
+        self.sequence = ''.join(random.choices(AA_list, k=self.length))
+
+    
+    def gen_logP(self,):
+        logP = np.array([random.uniform(0., 14.) for i in range(self.length)])
+        # Proline residues are not exchangeable
+        for i in range(self.length):
+            if self.sequence[i] == 'P':
+                logP[i] = 0.
+        self.logP = logP
+
+    def cal_k_init(self):
+        self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 300., 7.))
+
+
+    def calculate_incorporation(self):
+        def calculate_simple_deuterium_incorporation(rate, time):
+            # Calculates the deuterium incorporation for a log(kex)
+            # at time = t (seconds) assuming full saturation
+            return 1 - np.exp(-1*(10**rate)*time)
+        incorporations = []
+        for res_i in range(self.length):
+            log_kex = self.log_k_init[res_i] - self.logP[res_i]
+            incorporations.append(calculate_simple_deuterium_incorporation(log_kex, self.timepoints))
+
+        self.incorporations = np.array(incorporations)
+
+        
+
+    def gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
+        """
+        Chunks a given sequence into peptides of random length.
+        :param sequence: The sequence to be chunked.
+        :param min_len: Minimum length of a chunk.
+        :param max_len: Maximum length of a chunk.
+        :param max_overlap: Maximum overlap between consecutive chunks.
+        :param num_peptides: The desired number of peptides.
+        :return: A list of chunked peptides.
+        """
+        chunks = []
+        sequence_length = len(self.sequence)
+        covered = [False] * sequence_length
+
+        while len(chunks) < num_peptides and not all(covered):
+            start = random.randint(0, sequence_length - 1)
+            end = min(start + random.randint(min_len, max_len), sequence_length)
+
+            # Check if the current chunk overlaps significantly with already covered parts
+            if not all(covered[start:end]):
+                chunks.append(self.sequence[start:end])
+                for i in range(start, end):
+                    covered[i] = True
+
+            # Introduce random overlaps
+            if max_overlap and end < sequence_length:
+                overlap_end = min(end + random.randint(0, max_overlap), sequence_length)
+                for i in range(end, overlap_end):
+                    covered[i] = False
+
+        self.peptides = [i for i in sorted(chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
+
+
+
+    def convert_to_hdxms_data(self):
+        hdxms_data = HDXMSData('simulated_data', protein_sequence=self.sequence)
+        protein_state = ProteinState('SIM', hdxms_data=hdxms_data)
+        hdxms_data.add_state(protein_state)
+
+        #calculate incorporation
+        self.calculate_incorporation()
+
+
+        for peptide in self.peptides:
+            start = self.sequence.find(peptide) + 1
+            end = start + len(peptide) - 1
+
+            peptide_obj = Peptide(peptide, start, end, protein_state, n_fastamides=2) 
+            try:
+                protein_state.add_peptide(peptide_obj)
+                for tp_i, tp in enumerate(self.timepoints):
+                    pep_incorp = sum(self.incorporations[peptide_obj.start-1:peptide_obj.end][:,tp_i])
+                    random_stddev = peptide_obj.theo_max_d *0.03 * random.uniform(-1, 1)
+                    # random_stddev = 0
+                    tp_obj = Timepoint(peptide_obj, tp, pep_incorp + random_stddev, random_stddev,)
+                    
+                    isotope_envelope = spectra.get_theo_ms(tp_obj)
+                    #isotope_noise = np.array([random.uniform(-1, 1)*0.1*peak for peak in isotope_envelope])
+                    #tp_obj.isotope_envelope = isotope_envelope + isotope_noise
+                    tp_obj.isotope_envelope = isotope_envelope
+                
+                    peptide_obj.add_timepoint(tp_obj)
+
+            except:
+                continue
+            
+        self.hdxms_data = hdxms_data
+
+    
+                #peptide_obj.add_timepoint(tp, self.incorporations[start:end])
 

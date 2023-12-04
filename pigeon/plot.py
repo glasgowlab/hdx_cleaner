@@ -236,9 +236,14 @@ class ResidueCoverage:
         max_coverage = max([max(coverage) for coverage in coverage_list])
         min_coverage = min([min(coverage) for coverage in coverage_list])
 
-        for i, state in enumerate(self.hdxms_data.states):   
-            ax = axes.flatten()[i]
-            im = ax.imshow(coverage_list[i].reshape(1, -1), aspect='auto', cmap='Blues', extent=[0, 300, 0, 1], vmin=min_coverage, vmax=max_coverage)
+        for i, state in enumerate(self.hdxms_data.states):
+            if row_num == 1:
+                ax = axes
+            else:   
+                ax = axes.flatten()[i]
+            im = ax.imshow(coverage_list[i].reshape(1, -1), aspect='auto', cmap='Blues', 
+                           extent=[0, len(self.hdxms_data.protein_sequence), 0, 1], 
+                           vmin=min_coverage, vmax=max_coverage)
             ax.set_yticks([])
             ax.set_ylabel(state.state_name)   
         
