@@ -170,6 +170,10 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein
         if np.isnan(timepoint.num_d):
             continue
         else:
+            # if timepoint.deut_time == np.inf:
+            #     # add inf timepoint as a real timepoint, 1e8s
+            #     real_inf_timepoint = Timepoint(peptide, 100000000, row['#D'], row['Stddev'],int(row['Charge']))
+            #     peptide.add_timepoint(real_inf_timepoint)
             peptide.add_timepoint(timepoint)
     
     return hdxms_data
@@ -289,15 +293,18 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                     continue
                 elif tp.deut_time == 0:
                     csv_name = f'Non-D-1-z{tp.charge_state}.csv'
+                    csv_file_path = os.path.join(pep_sub_folder, csv_name)
+                elif tp.deut_time == 100000000:
+                    csv_name = glob(f'{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv')[0]
+
                 else:
                     csv_name = f'{int(tp.deut_time)}s-1-z{tp.charge_state}.csv'
-                
-                csv_file_path = os.path.join(pep_sub_folder, csv_name)
+                    csv_file_path = os.path.join(pep_sub_folder, csv_name)
                 try:
                     df = tp.load_raw_ms_csv(csv_file_path)
                 except:
                     print(peptide.identifier, tp.deut_time, tp.charge_state)
-                #print(csv_file_path)
+                    print(csv_file_path)
                 
         bad_timepoints = [tp for peptide in state.peptides for tp in peptide.timepoints if tp.isotope_envelope is None and tp.deut_time != np.inf]
         high_back_ex_tps = [tp for pep in state.peptides for tp in pep.timepoints if pep.max_d/pep.theo_max_d < 0.5]

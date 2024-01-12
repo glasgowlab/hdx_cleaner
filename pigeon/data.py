@@ -6,6 +6,7 @@ from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exc
 import spectra
 from hdxrate import k_int_from_sequence
 import random
+import math
 
 
 class RangeList:
@@ -269,6 +270,8 @@ class Peptide:
 
         if protein_state is not None:
             self.protein_state = protein_state
+        
+        self.max_d = self.get_max_d()
 
     def add_timepoint(self, timepoint):
         # Check if timepoint already exists
@@ -283,8 +286,8 @@ class Peptide:
     def num_timepoints(self):
         return len(self.timepoints)
 
-    @property
-    def max_d(self):
+    #@property
+    def get_max_d(self):
 
         # if no inf timepoint, return the theoretical max_d
         inf_tp = self.get_timepoint(np.inf)
@@ -295,10 +298,11 @@ class Peptide:
             max_d = inf_tp.num_d
 
         return max_d
-
+    
+    
     @property
     def theo_max_d(self):
-        num_prolines = self.sequence[self.n_fastamides:].count('P')
+        num_prolines = self.sequence.count('P')
         theo_max_d = len(self.sequence) - num_prolines
         return theo_max_d
     
@@ -459,20 +463,20 @@ class HDXStatePeptideCompares:
         self.peptide_compares = []
     
     @property
-    def common_sequences(self):
+    def common_idfs(self):
         
         #indetifer f"{pep.start}-{pep.end} {pep.sequence}"
-        peptides1 = set([f"{pep.start}-{pep.end} {pep.sequence}" for state1 in self.state1_list for pep in state1.peptides])
-        peptides2 = set([f"{pep.start}-{pep.end} {pep.sequence}" for state2 in self.state2_list for pep in state2.peptides])
+        peptides1 = set([pep.identifier for state1 in self.state1_list for pep in state1.peptides])
+        peptides2 = set([pep.identifier for state2 in self.state2_list for pep in state2.peptides])
         common_sequences = peptides1.intersection(peptides2)                
         return common_sequences
 
     def add_all_compare(self):
         import re
         peptide_compares = []
-        for sequence in self.common_sequences:
-            peptide1_list = [state1.get_peptide(sequence) for state1 in self.state1_list]
-            peptide2_list = [state2.get_peptide(sequence) for state2 in self.state2_list]
+        for idf in self.common_idfs:
+            peptide1_list = [state1.get_peptide(idf) for state1 in self.state1_list]
+            peptide2_list = [state2.get_peptide(idf) for state2 in self.state2_list]
             peptide_compare = PeptideCompare(peptide1_list, peptide2_list)
             peptide_compares.append(peptide_compare)
         self.peptide_compares = sorted(peptide_compares, key=lambda x: int(re.search(r"(-?\d+)--?\d+ \w+", x.compare_info).group(1)))
@@ -643,14 +647,16 @@ class ResidueCompare:
 
 
 class SimulatedData:
-    def __init__(self, length=100, seed=42):
+    def __init__(self, length=100, seed=42, noise_level=0):
 
         random.seed(seed)
         self.length = length
         self.gen_seq()
         self.gen_logP()
         self.cal_k_init()
-        self.timepoints = np.insert(np.logspace(1, 12, 10), 0, 0)
+        self.timepoints = np.insert(np.logspace(1, 12, 20), 0, 0)
+        #self.timepoints = np.insert(self.timepoints, -1, 1e12)
+        self.noise_level = noise_level
 
 
 
@@ -661,7 +667,7 @@ class SimulatedData:
 
     
     def gen_logP(self,):
-        logP = np.array([random.uniform(0., 14.) for i in range(self.length)])
+        logP = np.array([random.uniform(2., 10.) for i in range(self.length)])
         # Proline residues are not exchangeable
         for i in range(self.length):
             if self.sequence[i] == 'P':
@@ -669,7 +675,7 @@ class SimulatedData:
         self.logP = logP
 
     def cal_k_init(self):
-        self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 300., 7.))
+        self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 293., 7.))
 
 
     def calculate_incorporation(self):
@@ -684,40 +690,74 @@ class SimulatedData:
 
         self.incorporations = np.array(incorporations)
 
+
+
+    def _gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
+            """
+            Chunks a given sequence into peptides of random length.
+            :param sequence: The sequence to be chunked.
+            :param min_len: Minimum length of a chunk.
+            :param max_len: Maximum length of a chunk.
+            :param max_overlap: Maximum overlap between consecutive chunks.
+            :param num_peptides: The desired number of peptides.
+            :return: A list of chunked peptides.
+            """
+            chunks = []
+            sequence_length = len(self.sequence)
+            covered = [False] * sequence_length
+
+            while len(chunks) < num_peptides and not all(covered):
+                start = random.randint(0, sequence_length - 1)
+                end = min(start + random.randint(min_len, max_len), sequence_length)
+
+                # Check if the current chunk overlaps significantly with already covered parts
+                if not all(covered[start:end]):
+                    chunks.append(self.sequence[start:end])
+                    for i in range(start, end):
+                        covered[i] = True
+
+                # Introduce random overlaps
+                if max_overlap and end < sequence_length:
+                    overlap_end = min(end + random.randint(0, max_overlap), sequence_length)
+                    for i in range(end, overlap_end):
+                        covered[i] = False
+
+            self.peptides = [i for i in sorted(chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
         
 
     def gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
-        """
-        Chunks a given sequence into peptides of random length.
-        :param sequence: The sequence to be chunked.
-        :param min_len: Minimum length of a chunk.
-        :param max_len: Maximum length of a chunk.
-        :param max_overlap: Maximum overlap between consecutive chunks.
-        :param num_peptides: The desired number of peptides.
-        :return: A list of chunked peptides.
-        """
+
         chunks = []
-        sequence_length = len(self.sequence)
+        avg_peptide_length = math.ceil(min_len + max_len) / 2
+        sequence_length = len(self.sequence)    
+         
+        avg_coverage = math.ceil(num_peptides/sequence_length)
+
+        for i in range(sequence_length):
+            count = 0
+            while count < avg_coverage:
+                start = max(0, random.randint(int(i-avg_peptide_length-2), i)) # n_fastamides = 2
+                end = min(random.randint(i, int(i+avg_peptide_length)), sequence_length)
+                pep_len = len([i for i in self.sequence[start:end] if i != 'P'])
+                if pep_len > 3:
+                    chunks.append(self.sequence[start:end])
+                    count += 1
+                else:
+                    continue
+        
         covered = [False] * sequence_length
-
-        while len(chunks) < num_peptides and not all(covered):
-            start = random.randint(0, sequence_length - 1)
-            end = min(start + random.randint(min_len, max_len), sequence_length)
-
-            # Check if the current chunk overlaps significantly with already covered parts
-            if not all(covered[start:end]):
-                chunks.append(self.sequence[start:end])
+        while not all(covered):
+            reduced_chunks = random.sample(chunks, k=num_peptides,)
+            
+            for pep in reduced_chunks:
+                start = self.sequence.find(pep)
+                end = start + len(pep)
                 for i in range(start, end):
                     covered[i] = True
+                    
+        print(len(reduced_chunks))
 
-            # Introduce random overlaps
-            if max_overlap and end < sequence_length:
-                overlap_end = min(end + random.randint(0, max_overlap), sequence_length)
-                for i in range(end, overlap_end):
-                    covered[i] = False
-
-        self.peptides = [i for i in sorted(chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
-
+        self.peptides = [i for i in sorted(reduced_chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
 
 
     def convert_to_hdxms_data(self):
@@ -738,14 +778,14 @@ class SimulatedData:
                 protein_state.add_peptide(peptide_obj)
                 for tp_i, tp in enumerate(self.timepoints):
                     pep_incorp = sum(self.incorporations[peptide_obj.start-1:peptide_obj.end][:,tp_i])
-                    random_stddev = peptide_obj.theo_max_d *0.03 * random.uniform(-1, 1)
-                    # random_stddev = 0
+                    #random_stddev = peptide_obj.theo_max_d * self.noise_level * random.uniform(-1, 1)
+                    random_stddev = 0
                     tp_obj = Timepoint(peptide_obj, tp, pep_incorp + random_stddev, random_stddev,)
                     
                     isotope_envelope = spectra.get_theo_ms(tp_obj)
-                    #isotope_noise = np.array([random.uniform(-1, 1)*0.1*peak for peak in isotope_envelope])
-                    #tp_obj.isotope_envelope = isotope_envelope + isotope_noise
-                    tp_obj.isotope_envelope = isotope_envelope
+                    isotope_noise = np.array([random.uniform(-1, 1)* self.noise_level *peak for peak in isotope_envelope])
+                    tp_obj.isotope_envelope = isotope_envelope + isotope_noise
+                    #tp_obj.isotope_envelope = isotope_envelope
                 
                     peptide_obj.add_timepoint(tp_obj)
 

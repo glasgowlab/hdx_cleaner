@@ -103,6 +103,8 @@ def subtract_peptides(peptide_1, peptide_2):
     #skip if new_peptide is single Proline
     if new_peptide.sequence == 'P':
         return None  
+    if new_peptide.max_d == 0:
+        return None 
 
     # iterate over all the timepoints
     for tp in common_timepoints:
@@ -473,3 +475,13 @@ def backexchange_for_peps_no_data(hdxms_data_list):
        
 
     print('Average backexchange for peptides with no data: {}'.format(avg_backexchange))
+
+
+
+def calculate_coverages(hdxms_datas, state_name):
+    states = [data.get_state(state_name) for data in hdxms_datas]
+    coverage = np.zeros(len(states[0].hdxms_data.protein_sequence))
+    for state in states:
+        for pep in state.peptides:
+            coverage[pep.start-1:pep.end] += 1 
+    return coverage

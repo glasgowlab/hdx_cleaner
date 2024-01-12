@@ -217,10 +217,9 @@ class ResidueCoverage:
 
     def calculate_coverages(self, state_name):
         state = self.hdxms_data.get_state(state_name)
-        max_end = max(pep.end for pep in state.peptides)
-        coverage = np.zeros(max_end + 1)
+        coverage = np.zeros(len(self.hdxms_data.protein_sequence))
         for pep in state.peptides:
-            coverage[pep.start:pep.end + 1] += 1
+            coverage[pep.start-1:pep.end] += 1 
         return coverage
 
     def plot(self):
@@ -266,26 +265,26 @@ class UptakePlotsCollection:
         self.pdb_file = pdb_file
 
         
-    def add_plot(self, hdxms_datas, sequence:str):
-        plot = UptakePlot(hdxms_datas, sequence, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
+    def add_plot(self, hdxms_datas, idf:str):
+        plot = UptakePlot(hdxms_datas, idf, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
         self.plots.append(plot)
         
     def add_plot_all(self, hdxms_datas):
 
-        def get_unique_sequences(hdxms_datas):
-            sequences = []
+        def get_unique_idfs(hdxms_datas):
+            idfs = []
             for hdxms_data in hdxms_datas:
                 for state in hdxms_data.states:
                     for peptide in state.peptides:
-                        idf = f'{peptide.start}-{peptide.end} {peptide.sequence}'
-                        sequences.append(idf)
-            sequences = list(set(sequences))
-            sequences.sort()
-            return sequences
+                        idfs.append(peptide.identifier)
+            idfs = list(set(idfs))
+            idfs.sort(key=lambda x: int(x.split(' ')[0].split('-')[0]))
+            return idfs
         
-        unique_sequences = get_unique_sequences(hdxms_datas)
-        for sequence in unique_sequences:
-            self.add_plot(hdxms_datas, sequence)
+        unique_idfs = get_unique_idfs(hdxms_datas)
+        for idf in unique_idfs:
+            #(idf)
+            self.add_plot(hdxms_datas, idf)
 
     def save_plots(self, path):
         folder_name = os.path.join(path, 'uptake_plots')
@@ -349,6 +348,91 @@ def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):
 
     return fig
 
+
+def create_heatmap_single_state(hdxms_datas, colorbar_max, colormap="Greens"):
+
+    import matplotlib.colors as col
+    from matplotlib.patches import Rectangle
+    from matplotlib import colormaps
+    import matplotlib.patches as patches
+
+    state_name = list(set([state.state_name for data in hdxms_datas for state in data.states]))
+    if len(state_name) > 1:
+        raise ValueError("More than one state name found")
+    else:
+        state_name = state_name[0]
+
+    font = {'family' : 'Arial',
+            'weight' : 'normal',
+            'size'   : 14
+        }
+    axes = {'titlesize' : 18,
+            'titleweight' : 'bold',
+            'labelsize' : 16
+        }
+
+    plt.rc('font', **font)
+    plt.rc('axes', **axes)
+
+    plt.rcParams['figure.figsize'] = (4, 25)
+    plt.rcParams['font.size'] = 14
+    plt.rcParams['font.family'] = 'Arial'
+
+    #colormap = colormaps.get_cmap(colormap)
+    colormap = sns.light_palette("seagreen", as_cmap=True)
+
+    fig, ax = plt.subplots(1,1, figsize=(20,10))
+
+
+    all_peptides = [pep for data in hdxms_datas for state in data.states for pep in state.peptides]
+    all_peptides.sort(key=lambda x: x.start)
+
+
+    leftbound = all_peptides[0].start-10
+    rightbound = all_peptides[-1].end+10
+    ax.set_xlim(leftbound,rightbound)
+    ax.xaxis.set_ticks(np.arange(round(leftbound,-1), round(rightbound,-1), 10))
+    ax.set_ylim(-5,110)
+    ax.grid(axis='x')
+    ax.yaxis.set_ticks([])
+
+    #sns.heatmap(compare_df, cmap="RdBu", linewidths=1, vmin=-colorbar_max, vmax=colorbar_max, ax=ax)
+    norm = col.Normalize(vmin=0,vmax=colorbar_max)
+
+    for i,peptide in enumerate(all_peptides):
+
+        avg_d_percent = np.average([tp.d_percent for tp in peptide.timepoints if tp.deut_time != np.inf])
+        rect = Rectangle((peptide.start, (i % 20) * 5 + ((i // 20) % 2) * 2.5), 
+                            peptide.end - peptide.start,
+                            4,
+                            fc=colormap(norm(avg_d_percent)))
+        ax.add_patch(rect)
+
+    
+    
+    #
+    # coverage 
+    coverage = np.zeros(len(hdxms_datas[0].states[0].hdxms_data.protein_sequence))
+    for pep in all_peptides:
+        coverage[pep.start-1:pep.end] += 1
+    height = 3
+    for i in range(len(coverage)):
+        color_intensity = coverage[i] / 20 # coverage.max()  # Normalizing the data for color intensity
+        rect = patches.Rectangle((i, 105), 1, height, color=plt.cm.Blues(color_intensity))
+        ax.add_patch(rect)
+
+    fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm), ax=plt.gca())
+
+
+
+
+    ax.set_title(state_name)
+    fig.tight_layout()
+    plt.close()
+
+    return fig
+
+
 from matplotlib import cm
 
 # Create a function to create a heatmap
@@ -395,7 +479,70 @@ def create_heatmap_compare_tp(compare, colorbar_max, colormap="RdBu"):
     plt.close()
     
     return fig
+
+
+
+from matplotlib import cm
+
+# Create a function to create a heatmap
+def create_heatmap_tp_single_state(hdxms_datas, colorbar_max, colormap="BLues"):
+
+    font = {'family' : 'Arial',
+            'weight' : 'normal',
+            'size'   : 14
+        }
+    axes = {'titlesize' : 18,
+            'titleweight' : 'bold',
+            'labelsize' : 16
+        }
+
+    plt.rc('font', **font)
+    plt.rc('axes', **axes)
+
+    plt.rcParams['figure.figsize'] = (10, 25)
+    plt.rcParams['font.size'] = 14
+    plt.rcParams['font.family'] = 'Arial'
+
+    state_name = list(set([state.state_name for data in hdxms_datas for state in data.states]))
+    if len(state_name) > 1:
+        raise ValueError("More than one state name found")
+    else:
+        state_name = state_name[0]
+
+
+    fig, ax = plt.subplots()
+
+    all_peptides = [pep for data in hdxms_datas for state in data.states for pep in state.peptides]
+    all_peptides.sort(key=lambda x: x.start)
+
+    df = pd.DataFrame()
+    for peptide in all_peptides:
+        pep_dict = {}
+        pep_dict['title'] = peptide.identifier
+        #for tp, uptate_v in zip(pep_compare.common_timepoints, pep_compare.deut_diff):
+        for tp in peptide.timepoints:
+            if tp.deut_time != np.inf:
+                pep_dict[int(tp.deut_time)] = tp.d_percent
+        df = pd.concat([df, pd.DataFrame(pep_dict, index=[0])], ignore_index=True)
+    df = df.set_index('title')
+    #sort the columns by timepoint
+    df = df.reindex(sorted(df.columns), axis=1)
+    #sort the rows by sequence
+    #import re
+    #df['Start'] = df.index.map(lambda x: int(re.search(r"(-?\d+)--?\d+ \w+", x).group(1)))
+    #df = df.sort_values(by=['Start']).drop('Start', axis=1)
+
+
+    colormap = sns.light_palette("seagreen", as_cmap=True)
+    ax = sns.heatmap(df, cmap=colormap, linewidths=.75, vmin=0, vmax=100)
+    ax.set_title(state_name)
+    ax.set_ylabel('')
+    fig.tight_layout()
+    plt.close()
     
+    return fig
+    
+
 #Function to make a heatmap with positive and negative deuterium uptake values separated by a dotted line
 def create_heatmap_with_dotted_line(compare, colorbar_max, colormap="RdBu"):
     font = {'family': 'Arial',

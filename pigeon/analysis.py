@@ -180,9 +180,9 @@ class Analysis:
         return blocks
 
 
-    def load_bayesian_hdx_oupt(self, bayesian_hdx_data_file):
+    def load_bayesian_hdx_oupt(self, bayesian_hdx_data_file, N=50):
         pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_file)
-        self.bayesian_hdx_df = pof.get_best_scoring_models_pf_df(N=50)
+        self.bayesian_hdx_df = pof.get_best_scoring_models_pf_df(N=N)
         
         
     
@@ -285,13 +285,12 @@ class Analysis:
     
     #print(mini_pep[0]+1, mini_pep[1]+1)
 
-    def calculate_coverages(self):
+    def calculate_coverages(self, n_fastamides=2):
         all_peptides = [pep for state in self.protein_state for pep in state.peptides ]
-        max_end = max(pep.end for pep in all_peptides)
-        coverage = np.zeros(max_end + 1)
+        coverage = np.zeros(len(self.protein_state[0].hdxms_data.protein_sequence))
         for pep in all_peptides:
-            coverage[pep.start:pep.end + 1] += 1
-        return coverage[1:]
+            coverage[pep.start-1:pep.end] += 1
+        return coverage
 
 
 class Results(object):
