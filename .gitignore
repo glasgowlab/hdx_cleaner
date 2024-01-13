@@ -41,3 +41,4 @@ Thumbs.db
 example/*
 test/*
 .ipynb_checkpoints/
+example/plots/*

@@ -485,3 +485,32 @@ def calculate_coverages(hdxms_datas, state_name):
         for pep in state.peptides:
             coverage[pep.start-1:pep.end] += 1 
     return coverage
+
+
+
+def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protein_state, base_directory):
+    """
+    Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
+
+    :param raw_spectra_paths: List of paths to raw spectra.
+    :param protein_sequence: The protein sequence.
+    :param protein_state: The state of the protein.
+    :param base_directory: The base directory for the data.
+    :param template_file: Path to the template file.
+    :return: A string containing the generated script.
+    """
+    # Read the template from the file
+    with open('../../lib/run_bayesian_hdx_template.txt', 'r') as file:
+        script_template = file.read()
+
+    # Generate the script using the template
+    generated_script = script_template.format(
+        install_dir=install_dir,
+        protein_state=protein_state,
+        sequence=protein_sequence,
+        exp_names=exp_names,
+        base_directory=base_directory
+    )
+
+    return generated_script
+

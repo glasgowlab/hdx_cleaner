@@ -1,0 +1,65 @@
+# Add the Bayesian HDX directory to the system path
+import sys
+sys.path.append(f'{install_dir}')
+
+# Import required modules
+import scoring, sampling, system, model, hxio, tools, data
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Define protein state and sequence
+protein_state = '{protein_state}'
+sequence = "{sequence}"
+
+# Define experiment names and input file paths
+exp_names = {exp_names}
+infile_list = [f"{base_directory}/bayesian_hdx_{{exp}}_{{protein_state}}.dat" for exp in exp_names]
+
+# Process datasets
+dataset_list = []
+for i, infile in enumerate(infile_list):
+    dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=None, error_estimate=0.5, n_fastamides=2, offset=0)
+    raw_spectra_path = f"{base_directory}/spectra_{{exp_names[i]}}/"
+    hxio.load_raw_ms_from_pegion(dataset, raw_spectra_path)
+    dataset_list.append(dataset)
+
+# Merge datasets
+merged_dataset = data.merge_mutiple_datasets(dataset_list)
+tools.refine_dataset(merged_dataset)
+
+# Initialize model and system
+state_name = f"{protein_state}"
+outputdir = f"{base_directory}/bayesian_hdx_output"
+num_exp_bins = 40
+nsteps = 1000
+sys = system.System(output_dir=outputdir, noclobber=False)
+mol = sys.add_macromolecule(sequence, "Test", initialize_apo=False)
+
+# Add state and scoring function
+state = mol.add_state(f"{{state_name}}_1")
+state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModelIsotope(state, truncated=False))
+
+# Add data to molecule state
+state.add_dataset(merged_dataset)
+sys.output.write_datasets()
+
+# Set up the output model
+output_model = model.ResidueGridModel(state, grid_size=num_exp_bins)
+state.set_output_model(output_model)
+
+# Initialize sampler
+sampler = sampling.MCSampler(sys, pct_moves=20, sigma_sample_level=None)
+sys.output.initialize_output_model_file(state, output_model.pf_grids)
+
+# Run sampling
+annealing_steps = 100 
+for i in range(5):
+    sampler.run(annealing_steps, 50, find_temperature=False)
+    sampler.run(annealing_steps, 20, find_temperature=False)
+    sampler.run(annealing_steps, 10, find_temperature=False)
+    sampler.residue_sampler.set_adjacency(True, 4)
+    sampler.run(annealing_steps, 5, find_temperature=False)
+    sampler.run(nsteps, 2, write=True, find_temperature=False)
+    sampler.run(500, 0.1, write=True, find_temperature=False)
