@@ -271,7 +271,7 @@ class Peptide:
         if protein_state is not None:
             self.protein_state = protein_state
         
-        self.max_d = self.get_max_d()
+        #self.max_d = self.get_max_d()
 
     def add_timepoint(self, timepoint):
         # Check if timepoint already exists
@@ -286,8 +286,8 @@ class Peptide:
     def num_timepoints(self):
         return len(self.timepoints)
 
-    #@property
-    def get_max_d(self):
+    @property
+    def max_d(self):
 
         # if no inf timepoint, return the theoretical max_d
         inf_tp = self.get_timepoint(np.inf)

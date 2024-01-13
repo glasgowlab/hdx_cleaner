@@ -473,7 +473,7 @@ def backexchange_for_peps_no_data(hdxms_data_list):
         inf_tp = data.Timepoint(pep, np.inf, max_d, np.nan)
         pep.add_timepoint(inf_tp)
        
-
+    print('Number of peptides with no data: {}'.format(len(pep_with_no_exp_mad_d)))
     print('Average backexchange for peptides with no data: {}'.format(avg_backexchange))
 
 
