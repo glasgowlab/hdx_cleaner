@@ -50,6 +50,6 @@ git clone git@github.com:glasgowlab/PIGEON.git
 git clone git@github.com:lucl13/bayesian_hdx.git
 ```
 
-> **NOTE:** bayesian_hdx at the above link is a fork of the original repo at https://github.com/salilab/bayesian_hdx with some modifications to the code to make it compatible with the PIGEON workflow and support for the isotopic enve
+> **NOTE:** bayesian_hdx at the above link is a fork of the original repo at https://github.com/salilab/bayesian_hdx with some modifications to the code to make it compatible with the PIGEON workflow and support for the isotopic envelope fitting.
 
 
