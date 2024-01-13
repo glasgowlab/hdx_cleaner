@@ -21,12 +21,12 @@ where:
 * --o: peptide pool from HDExaminer
 * --r: rangelist of the good peptide,
 
----
+
 ### 2. HDExaminer maunual QC
 
 To check the MS spectra, exclude the bad peptides
 
----
+
 ### 3. POST_PIGEON 
 
 To parse the output from HDExaminer using interactive object-oriented notebook 
