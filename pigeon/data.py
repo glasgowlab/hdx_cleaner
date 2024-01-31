@@ -7,6 +7,8 @@ import spectra
 from hdxrate import k_int_from_sequence
 import random
 import math
+import re
+import warnings
 
 
 class RangeList:
@@ -147,7 +149,12 @@ class HDXMSData:
             for peptide in state.peptides:
                 peptide.start -= index_offset
                 peptide.end -= index_offset
-                peptide.identifier = f"{peptide.start}-{peptide.end} {peptide.sequence}"
+                
+                # identifier
+                old_idf = peptide.identifier
+                idf_start, idf_end = re.match(r'(-?\d+)-(-?\d+)', old_idf).group(1,2)
+                new_idf = f"{int(idf_start) - index_offset}-{int(idf_end) - index_offset} {peptide.sequence}"
+                peptide.identifier = new_idf
 
         print(f"Peptide reindexed with offset {-1*index_offset}")
 
@@ -369,12 +376,11 @@ class Peptide:
         x = np.array([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
         y = np.array([tp.num_d for tp in self.timepoints if tp.deut_time != np.inf])
         max_timepoint = max([tp.deut_time for tp in self.timepoints if tp.deut_time != np.inf])
-        trialT = np.logspace(1.0, np.log10(max_timepoint*2), 100)
+        min_timepoint = min([tp.deut_time for tp in self.timepoints if tp.deut_time != 0])
+        trialT = np.logspace(np.log10(min_timepoint), np.log10(max_timepoint), 100)
 
         fit_resluts = {}
-        for exp_num in range(1, 5):
-
-
+        for exp_num in range(2, 4):
 
             n = exp_num
             
@@ -388,12 +394,17 @@ class Peptide:
 
                 fit_resluts[exp_num] = {'popt': popt, 'pcov': pcov, 'perr': perr, 'mse': mse, 'loss': loss, 'y_pred': y_pred, 'trialT': trialT}
             except Exception as e:
-                print(f"Error in fitting peptide: exp_num={exp_num}")
+                #print(f"Error in fitting peptide: exp_num={exp_num}")
                 fit_resluts[exp_num] = {'loss': np.inf}
+                warnings.warn(f"Error in fitting peptide: exp_num={exp_num}")
 
         best_fit = min(fit_resluts, key=lambda x: fit_resluts[x]['loss'])
         best_model = fit_resluts[best_fit]
-        return best_model['trialT'], best_model['y_pred'], best_model['popt'], best_model['perr']
+
+        try:
+            return best_model['trialT'], best_model['y_pred'], best_model['popt'], best_model['perr']
+        except:
+            return None, None, None, None
 
 
     def get_deut(self, deut_time):

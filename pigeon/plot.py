@@ -8,6 +8,7 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 from data import *
+import re
 
 
 font = {'family' : 'Arial', 'weight' : 'normal', 'size' : 36}
@@ -116,7 +117,7 @@ class UptakePlot:
 
         sns.lineplot(data=self.hdxms_datas_df, 
                      x='time', y='deut', hue='state', errorbar='sd', 
-                     err_style='bars', marker='o', linestyle=' ', markersize=18, alpha=0.5,
+                     err_style='bars', marker='o', linestyle=' ', markersize=18, alpha=1.0,
                      ax=ax, palette=self.color_dict)
         
         # Plot the fit
@@ -126,13 +127,25 @@ class UptakePlot:
                 #trialT, y_pred, popt, perr =  avg_peptide.fit_results
                 trialT, y_pred, popt, perr =  avg_peptide.new_fit()
                 #trialT, y_pred, popt, perr =  avg_peptide.fit_hdx_stats()
-                ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name])
+                if trialT is None:
+                    #raw data, no fit
+                    trialT = [tp.deut_time for tp in avg_peptide.timepoints if tp.deut_time != np.inf and tp.deut_time != 0]
+                    y_pred = [tp.num_d for tp in avg_peptide.timepoints if tp.deut_time != np.inf and tp.deut_time != 0]
+                ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name], alpha=0.5)
+        else:
+            for state_name in self.hdxms_datas_df.state.unique():
+                avg_peptide = self.get_average_peptide(state_name)
+                
+                #raw data, no fit
+                trialT = [tp.deut_time for tp in avg_peptide.timepoints if tp.deut_time != np.inf and tp.deut_time != 0]
+                y_pred = [tp.num_d for tp in avg_peptide.timepoints if tp.deut_time != np.inf and tp.deut_time != 0]
+                ax.plot(trialT, y_pred, '-', color=self.color_dict[state_name], alpha=0.5)
 
         # set up the plot
         ax.set_ylabel('# Deuterons')
         ax.set_xlabel('Time (seconds)')
         ax.set_xscale('log')
-        avg_peptide = self.get_average_peptide(self.hdxms_datas_df.state.unique()[0])
+        #avg_peptide = self.get_average_peptide(self.hdxms_datas_df.state.unique()[0])
         
         ax.set_ylim(min(self.hdxms_datas_df['deut'])-1, max(self.hdxms_datas_df['deut'])+1)
         #ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
@@ -168,6 +181,14 @@ class UptakePlot:
             hdxms_data_df['data_set_index'] = hdxms_data_index
             hdxms_datas_df = pd.concat([hdxms_datas_df, hdxms_data_df], ignore_index=True)
         return hdxms_datas_df
+    
+
+    @property
+    def uptake_std(self):
+        df = self.hdxms_datas_df[~self.hdxms_datas_df['time'].isin([0, np.inf])]
+        deut_std = df.groupby(['state', 'time']).std().reset_index()['deut'].mean()
+        return deut_std
+
 
     def get_average_peptide(self, state_name):
         grouped_df = self.hdxms_datas_df.groupby('state')
@@ -177,10 +198,9 @@ class UptakePlot:
         group_mean =final_group.mean(numeric_only=True).reset_index()
         group_std =final_group.std(numeric_only=True).reset_index()
 
-
-        start = int(self.identifier.split(' ')[0].split('-')[0])
-        end = int(self.identifier.split(' ')[0].split('-')[1])
-        peptide = Peptide(self.sequence, start, end, f"averaged peptide: {state_name}")
+        idf_start, idf_end = re.match(r'(-?\d+)-(-?\d+)', self.identifier).group(1,2)
+        peptide = Peptide(self.sequence, int(idf_start), int(idf_end), f"averaged peptide: {state_name}", 
+                          n_fastamides=self.hdxms_datas[0].n_fastamides)
         for i in range(len(group_mean)):
             timepoint = Timepoint(peptide, group_mean['time'][i], group_mean['deut'][i], group_std['deut'][i])
             peptide.add_timepoint(timepoint)
@@ -263,11 +283,16 @@ class UptakePlotsCollection:
         self.color_dict = color_dict
         self.if_plot_fit = if_plot_fit
         self.pdb_file = pdb_file
+        self.high_std_plots = []
 
         
-    def add_plot(self, hdxms_datas, idf:str):
+    def add_plot(self, hdxms_datas, idf:str, uptake_std_threshold=0.5):
         plot = UptakePlot(hdxms_datas, idf, if_plot_fit=self.if_plot_fit, color_dict=self.color_dict)
-        self.plots.append(plot)
+        if plot.uptake_std > uptake_std_threshold:
+            print(f"{idf} not added due to high uptake std: {plot.uptake_std}")
+            self.high_std_plots.append(plot)
+        else:
+            self.plots.append(plot)
         
     def add_plot_all(self, hdxms_datas):
 
@@ -278,7 +303,7 @@ class UptakePlotsCollection:
                     for peptide in state.peptides:
                         idfs.append(peptide.identifier)
             idfs = list(set(idfs))
-            idfs.sort(key=lambda x: int(x.split(' ')[0].split('-')[0]))
+            idfs.sort(key=lambda x: int(re.search(r'-?\d+', x).group(0)))
             return idfs
         
         unique_idfs = get_unique_idfs(hdxms_datas)
@@ -340,7 +365,7 @@ def create_heatmap_compare(compare, colorbar_max, colormap="RdBu"):
             ax.add_patch(rect)
 
 
-    fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm))
+    fig.colorbar(cm.ScalarMappable(cmap=colormap, norm=norm), ax=plt.gca())
 
     ax.set_title(compare.state1_list[0].state_name + '-' + compare.state2_list[0].state_name)
     fig.tight_layout()
@@ -615,31 +640,30 @@ def create_compare_pymol_plot(compares, colorbar_max, colormap="RdBu", pdb_file=
     cmd.color("gray")
 
     if isinstance(compares, HDXStatePeptideCompares):
-        for i, seq in enumerate(rgb_df['title']):
-            parts = seq.split()
-            if len(parts) > 0:
-                resi = parts[0]  # Extract the first part (e.g., "ABC")
-                seq = parts[-1]
-                seq_n = "res_" + seq
-                #print(seq_n)
-                #print(f"Selecting: {seq}, 'resi {resi}'")
-                cmd.select(seq_n, 'resi ' + resi)
-                cmd.set_color(f'{seq_n}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-                cmd.color(f'{seq_n}', seq_n)
-                #print(f'{seq_n}', seq)
+        #sort the peptide by length
+        rgb_df.sort_values(by='title', key=lambda x: x.str.split().str.len(), ascending=False, inplace=True)
+
+        for row in rgb_df.iterrows():
+            
+            resi = f"{row[1]['title'].split(' ')[0]}"
+            seq_n = f"res_{row[1]['title'].split(' ')[1]}"
+            r_v, g_v, b_v = row[1]['r'], row[1]['g'], row[1]['b']
+
+            cmd.select(seq_n, 'resi ' + resi + ' and polymer.protein')
+            cmd.set_color(f'{seq_n}', [r_v, g_v, b_v])
+            cmd.color(f'{seq_n}', seq_n)
 
     elif isinstance(compares, HDXStateResidueCompares):
-            for i, seq in enumerate(rgb_df['title']):
-                if np.isnan(rgb_df['s'].values[i]):
-                    continue
-                parts = seq.split()
-                if len(parts) > 0:
-                    resi = parts[0]  # Extract the first part (e.g., "ABC")
-                    cmd.select(seq, 'resi ' + resi)
-                    cmd.set_color(f'res_{seq}', [rgb_df['r'][i], rgb_df['g'][i], rgb_df['b'][i]])
-                    cmd.color(f'res_{seq}', seq)
-                    cmd.delete(seq)
-    
+        for row in rgb_df.iterrows():
+
+            resi = f"{row[1]['title']}"
+            cmd.select(f'resi_{resi}', 'resi ' + resi + ' and polymer.protein')
+            r_v, g_v, b_v = row[1]['r'], row[1]['g'], row[1]['b']
+
+            cmd.set_color(f'resi_{resi}', [r_v, g_v, b_v])
+            cmd.color(f'resi_{resi}', f'resi_{resi}')
+            cmd.delete(f'resi_{resi}')
+            
     cmd.ray(1000,1000)
     
     if path is not None:

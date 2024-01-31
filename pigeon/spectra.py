@@ -160,7 +160,7 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     # # if bad drop replicate
     if df_picked.empty:
         #replicate.timepoint.replicates.remove(replicate)
-        print(f'bad replicate droped: {timepoint.peptide.sequence} {timepoint.deut_time} {timepoint.charge_state}')
+        #print(f'bad replicate droped: {timepoint.peptide.sequence} {timepoint.deut_time} {timepoint.charge_state}')
         return None
 
     
@@ -199,7 +199,7 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     # if bad drop replicate
     if selected_df.empty:
        #replicate.timepoint.replicates.remove(replicate)
-       print(f'bad replicate droped: {timepoint.peptide.sequence} {timepoint.deut_time} {timepoint.charge_state}')
+       #print(f'bad replicate droped: {timepoint.peptide.sequence} {timepoint.deut_time} {timepoint.charge_state}')
        return None
 
     if add_sn_ratio_to_tp:

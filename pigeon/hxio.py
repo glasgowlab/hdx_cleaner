@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import os
 from glob import glob
+import time
 
 def read_hdx_tables(tables, ranges, exclude=False):
     newbigdf = pd.DataFrame()

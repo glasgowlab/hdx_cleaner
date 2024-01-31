@@ -5,12 +5,37 @@ from spectra import get_theo_ms
 
 
         
-def refine_data(hdxms_data_list):
+def refine_data(hdxms_data_list, std_threshold=1.0):
     '''
     Remove peptides with large deviation across replicates
-    std > 80% * max difference between states
+    all tps has std > 1.0 will be removed
     '''
+    all_tps = [tp for data in hdxms_data_list for state in data.states for peptide in state.peptides for tp in peptide.timepoints if tp.deut_time != np.inf and tp.deut_time != 0.0]
+    grouped_tps = group_by_attributes(all_tps, ['peptide.protein_state.state_name', 'peptide.identifier','deut_time'])
     
+    high_std_tps = {}
+    all_std = []
+    for k, v in grouped_tps.items():
+        if len(v) > 1:
+            std = np.std([i.num_d for i in v])
+            if std > std_threshold:
+                high_std_tps[k] = v
+            all_std.append(std)
+    for k,v in high_std_tps.items():
+        std = np.std([i.num_d for i in v])
+        #print(k, std)     
+
+    all_std = np.array(all_std)  
+    print(f'Average timepoint std: {np.mean(all_std)}')
+
+    for k,v in high_std_tps.items():
+        std = np.std([i.num_d for i in v])
+        states = [data.get_state(k[0]) for data in hdxms_data_list]
+        for state in states:
+            remove_tps_from_state(v, state)
+        #print(k, std)    
+    
+
 
 def find_overlapped_peptides(protein_state):
     '''
@@ -425,13 +450,20 @@ def remove_tps_from_state(removing_tps, state):
         # Remove peptides without timepoints or with no time 0
         if pep.timepoints == []:
             state.peptides.remove(pep)
-            print(f'{pep.sequence} removed')
+            print(f'{pep.identifier} removed')
 
     for pep in state.peptides:
         tp0_tps = [tp for tp in pep.timepoints if tp.deut_time == 0 ]
         if len(tp0_tps) == 0:
             state.peptides.remove(pep)
-            print(f'{pep.sequence} removed')
+            print(f'{pep.identifier} removed')
+
+    for pep in state.peptides:   
+        # with less than 3 timepoints not counting time 0, inf
+        real_tps_num = len(set(tp.deut_time for tp in pep.timepoints if tp.deut_time != np.inf and tp.deut_time != 0.0))
+        if real_tps_num < 3:
+            state.peptides.remove(pep)
+            print(f'{pep.identifier} removed')
     
     #n_tp = len([tp for pep in state.peptides for tp in pep.timepoints])
     #print(f'Number of timepoints after removing: {n_tp}')
