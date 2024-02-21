@@ -7,6 +7,7 @@ import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.cluster import KMeans
+from hdxrate import k_int_from_sequence
 
 
 
@@ -183,9 +184,25 @@ class Analysis:
     def load_bayesian_hdx_oupt(self, bayesian_hdx_data_file, N=50):
         pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_file)
         self.bayesian_hdx_df = pof.get_best_scoring_models_pf_df(N=N)
+
+        # run clustering
+        self.clustering_results()
         
-        
-    
+
+    def load_bayesian_hdx_oupt_chunks(self, chunk_size, chunk_num, bayesian_hdx_data_folder, N=50):
+
+        df_list = []        
+        range_chunks = [(i*chunk_size+1, (i+1)*chunk_size) for i in range(chunk_num)]
+        bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith('.dat')])
+
+        for i, chunk in enumerate(range_chunks):
+            pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_files[i])
+            df = pof.get_best_scoring_models_pf_df(N=N)
+            df_list.append(df.iloc[:, chunk[0]-1:chunk[1]]) 
+        self.bayesian_hdx_df = pd.concat(df_list, axis=1)
+       
+        # run clustering
+        self.clustering_results()
 
     def clustering_results(self):
         
@@ -238,7 +255,7 @@ class Analysis:
         #     indexes = [i for i in range(mini_pep[0], mini_pep[1]+1) if np.isnan(self.bayesian_hdx_df.mean()).iloc[i] == False] 
         #     xx[indexes] = sorted(xx[indexes])
 
-        self.clustering_results()
+        #self.clustering_results()
         
         xx = np.array([res.resid for res in self.results_obj.residues if res.is_nan() == False])
         yy = np.concatenate([mini_pep.clustering_results for mini_pep in self.results_obj.mini_peps])
@@ -337,6 +354,10 @@ class Results(object):
             if mini_pep.start == start and mini_pep.end == end:
                 return mini_pep
         raise Exception('mini_pep not found')
+    
+    @property
+    def log_k_init(self, temperature=293., pH=7.):
+        return np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
 
        
 class Residue(object):
@@ -354,6 +375,32 @@ class Residue(object):
         
     def is_nan(self):
         return self.resluts_obj.analysis_object.bayesian_hdx_df.mean().isna()[self.resindex]
+    
+    @property
+    def log_k_init(self):
+        return self.resluts_obj.log_k_init[self.resindex]
+
+
+    def if_off_time_window(self, time_window=(30, 1e12)):
+        if len(self.mini_pep.clustering_results) == 1:
+            return _if_off_time_window(self.log_k_init, self.mini_pep.clustering_results[0], time_window=time_window)
+        else:
+            return any([_if_off_time_window(self.log_k_init, log_PF, time_window=time_window) for log_PF in self.mini_pep.clustering_results])
+        
+
+def residue_d_uptake(rate, time):
+    # Calculates the deuterium incorporation for a log(kex)
+    # at time = t (seconds) assuming full saturation
+    return 1 - np.exp(-1*(10**rate)*time)
+
+
+def _if_off_time_window(log_k_init, log_PF, time_window):
+    if residue_d_uptake(log_k_init-log_PF, time_window[0]) > 0.99:
+        return True
+    elif residue_d_uptake(log_k_init-log_PF, time_window[1]) < 0.01:
+        return True
+    else:
+        return False
 
         
 class MiniPep(object):
@@ -697,6 +744,9 @@ def remove_outliers(data):
 
     # Convert input to numpy array in case it's a list or other array-like object
     data = np.array(data)
+
+    # Remove all zeros, bc PFs can't be zero
+    #data = data[data != 1e-3]
     
     # Calculate Q1, Q3, and IQR
     Q1 = np.percentile(data, 25)

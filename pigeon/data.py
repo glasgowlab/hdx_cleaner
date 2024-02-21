@@ -153,7 +153,8 @@ class HDXMSData:
                 # identifier
                 old_idf = peptide.identifier
                 idf_start, idf_end = re.match(r'(-?\d+)-(-?\d+)', old_idf).group(1,2)
-                new_idf = f"{int(idf_start) - index_offset}-{int(idf_end) - index_offset} {peptide.sequence}"
+                idf_seq = old_idf.split(' ')[1]
+                new_idf = f"{int(idf_start) - index_offset}-{int(idf_end) - index_offset} {idf_seq}"
                 peptide.identifier = new_idf
 
         print(f"Peptide reindexed with offset {-1*index_offset}")
@@ -208,7 +209,8 @@ class ProteinState:
         subgroups = find_overlapped_peptides(self)
 
         new_peptide_added = []
-        for subgroup in subgroups.values():
+        for key in sorted(subgroups.keys()):
+            subgroup = sorted(subgroups[key], key=lambda x: x.start)
             if len(subgroup) >= 2:
                 # create all possible pairs of items
                 pairs = list(itertools.combinations([i for i in subgroup], 2))
@@ -596,7 +598,7 @@ class ResidueCompare:
         res_containing_peptides = []
         for state in state_list:
             for pep in state.peptides:
-                if self.resid > pep.start and self.resid < pep.end:
+                if self.resid >= pep.start and self.resid <= pep.end:
                 #if self.resid - pep.start < 5 and pep.end - self.resid < 5: 
                     res_containing_peptides.append(pep)
         return res_containing_peptides

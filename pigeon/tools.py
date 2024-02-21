@@ -133,21 +133,27 @@ def subtract_peptides(peptide_1, peptide_2):
 
     # iterate over all the timepoints
     for tp in common_timepoints:
-        std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
-        timepoint = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
         
         longer_tp = longer_peptide.get_timepoint(tp)
         shorter_tp = shorter_peptide.get_timepoint(tp)
+
+        std = np.sqrt(longer_peptide.get_timepoint(tp).stddev**2 + shorter_peptide.get_timepoint(tp).stddev**2)
+        timepoint = data.Timepoint(new_peptide, tp, longer_tp.num_d - shorter_tp.num_d, std)
+        #timepoint = data.Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
 
         if hasattr(longer_tp, 'isotope_envelope') and hasattr(shorter_tp, 'isotope_envelope') and tp != np.inf:
 
             #timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
             p1 = longer_tp.isotope_envelope.copy()
             p2 = shorter_tp.isotope_envelope.copy()
-            p3 = get_theo_ms(timepoint)
+            #p3 = get_theo_ms(timepoint)
+            p3 = force_to_envelope(deconvolute_fft(p1, p2))
             best_model = deconvolute_iso(p1, p2, p3, steps=2000)
-            timepoint.isotope_envelope = best_model[1]
-            new_peptide.add_timepoint(timepoint)
+            if best_model[1] is None:
+                continue # skip if no best model found for the timepoint
+            else:
+                timepoint.isotope_envelope = best_model[1]
+                new_peptide.add_timepoint(timepoint)
 
         else:
             new_peptide.add_timepoint(timepoint)
@@ -193,22 +199,22 @@ def average_timepoints(tps_list):
     return avg_timepoint
 
 
-# def deconvolute(p, p1):
-#     # Compute the Fourier Transforms
-#     P = np.fft.fft(p)
-#     P1 = np.fft.fft(p1, n=len(p))  # Make sure the arrays have the same length
+def deconvolute_fft(p, p1):
+    # Compute the Fourier Transforms
+    P = np.fft.fft(p)
+    P1 = np.fft.fft(p1, n=len(p))  # Make sure the arrays have the same length
     
-#     # Division in the Frequency Domain
-#     P2 = P / P1
+    # Division in the Frequency Domain
+    P2 = P / P1
     
-#     # Compute the Inverse Fourier Transform
-#     p2 = np.fft.ifft(P2).real  # Take the real part to ignore small numerical errors
+    # Compute the Inverse Fourier Transform
+    p2 = np.fft.ifft(P2).real  # Take the real part to ignore small numerical errors
 
-#     #wipe the negative values to 1e-10
-#     p2[p2 < 0] = 1e-10
-#     p2 = p2 / np.sum(p2)
+    #wipe the negative values to 1e-10
+    p2[p2 < 0] = 1e-10
+    p2 = p2 / np.sum(p2)
 
-#     return p2
+    return p2
 
 
 
@@ -220,6 +226,18 @@ def metropolis_criterion(old_loss, new_loss, temperature):
         probability = np.exp(-delta_loss / temperature)
         return np.random.rand() < probability
     
+
+def force_to_envelope(p3_array):
+    
+    max_index = np.argmax(p3_array)
+
+    before_peak = np.sort(p3_array[0:max_index])
+    after_peak = np.sort(p3_array[max_index+1:])[::-1]
+    
+    #make a new envelope
+    new_envelope = np.concatenate((before_peak, np.array(p3_array[max_index]),after_peak), axis=None)
+    
+    return new_envelope
 
 
 def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
@@ -235,7 +253,9 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
     
     p1_estimated = convolve(p3, p2)
     p1_estimated = normlize(p1_estimated)
-    previous_loss = get_sum_ae(p1, p1_estimated)
+
+    num_peaks = np.count_nonzero(p1>0.1)  #number of major peaks
+    previous_loss = get_sum_ae(p1, p1_estimated)/num_peaks
     
     best_models = []
     
@@ -247,11 +267,12 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
         p3 += change
         p3[p3 < 0] = 1e-10  # Prevent negative values
         p3 = normlize(p3)  # Normalize p3
+        p3 = force_to_envelope(p3) #force to envelope
 
         # Calculate new loss
         p1_estimated = convolve(p3, p2)
         p1_estimated = normlize(p1_estimated)
-        new_loss = get_sum_ae(p1, p1_estimated)
+        new_loss = get_sum_ae(p1, p1_estimated)/num_peaks
 
 
         # Decide whether to accept the change
@@ -267,16 +288,19 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
 
         temperature *= 0.99  # Decrease the temperature
 
-        if new_loss < 0.1 or continus_rejects > 100:
-            break
+        if new_loss < 0.1 or ( 0.1 < new_loss <0.2 and continus_rejects > 20):
+
+            best_models.sort(key=lambda x: x[0])
+            return best_models[0]
+        
+        elif new_loss > 0.2 and continus_rejects > 100:
+
+            return (previous_loss, None)
 
         # if i % 100 == 0:
         #     print(i, previous_loss) 
     # print(i, previous_loss)
-    best_models.sort(key=lambda x: x[0])
     
-
-    return best_models[0]
 
     
 
@@ -520,7 +544,7 @@ def calculate_coverages(hdxms_datas, state_name):
 
 
 
-def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protein_state, base_directory):
+def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protein_state, base_directory, making_chunks=False):
     """
     Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
 
@@ -532,8 +556,12 @@ def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protei
     :return: A string containing the generated script.
     """
     # Read the template from the file
-    with open('../../lib/run_bayesian_hdx_template.txt', 'r') as file:
-        script_template = file.read()
+    if making_chunks:
+        with open('../../lib/run_bayesian_hdx_template_chunks.txt', 'r') as file:
+            script_template = file.read()
+    else:
+        with open('../../lib/run_bayesian_hdx_template.txt', 'r') as file:
+            script_template = file.read()
 
     # Generate the script using the template
     generated_script = script_template.format(

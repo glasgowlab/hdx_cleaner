@@ -10,7 +10,10 @@ import pyopenms as oms
 from itertools import groupby
 from operator import attrgetter
 from copy import deepcopy
-
+import math
+from scipy.signal import medfilt
+import warnings
+warnings.filterwarnings("ignore")
 
 
 
@@ -132,6 +135,31 @@ def get_theo_ms(timepoint):
     return tp_deut_iso_theo
 
 
+
+def filter_outliers(peaks, highest_peak_index):
+
+    # Initialize a list to store the indices of outliers
+    outliers = []
+    
+    # Check to the left of the highest peak
+    for i in range(highest_peak_index - 1, -1, -1):
+        if (peaks[i][1] - peaks[i + 1][1])/peaks[i + 1][1] > 0.1:
+            outliers.append(i)
+    
+    # Check to the right of the highest peak
+    for i in range(highest_peak_index + 1, len(peaks)):
+        if (peaks[i][1] - peaks[i - 1][1])/peaks[i - 1][1] > 0.1:
+            outliers.append(i)
+    
+    # # Filter out the outliers
+    # filtered_peaks = [peak for i, peak in enumerate(peaks) if i not in outliers]
+
+    # indexes
+    filtered_peaks = np.array([i for i, peak in enumerate(peaks) if i not in outliers])
+    
+    return filtered_peaks
+
+
 def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     #print(f'{replicate.peptide.sequence} {replicate.timepoint.time} {replicate.charge_state}')
     
@@ -144,7 +172,7 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     spectrum.set_peaks((mz_values, intensities))
 
     # Step 2: smoothing 
-    #spectrum = ms_smoothing(spectrum)
+    spectrum = ms_smoothing(spectrum)
 
     # Step 3: Centroiding
     picker = oms.PeakPickerHiRes()
@@ -153,6 +181,8 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
 
     mz_picked, intensity_picked = picked_spectrum.get_peaks()
     df_picked = pd.DataFrame({'m/z': mz_picked, 'Intensity': intensity_picked})
+    # filter out low intensity signals
+    df_picked = df_picked[df_picked['Intensity'] > 1e3]
 
     tp_deut_iso_theo = get_theo_ms(timepoint)
     
@@ -172,25 +202,49 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     sn_ratio = []
     
     
-    mz_start, mz_end = np.where(tp_deut_iso_theo> 0.01)[0][0], np.where(tp_deut_iso_theo> 0.01)[0][-1]
+    #mz_start, mz_end = np.where(tp_deut_iso_theo> 0.01)[0][0], np.where(tp_deut_iso_theo> 0.01)[0][-1]
+    mz_start = 0
+    mz_end = np.where(get_theoretical_isotope_distribution(timepoint)['Intensity'].values > 1e-3)[0][-1] + math.ceil(timepoint.num_d)
     #print(mz_start, mz_end)
     for mz_int in range(mz_start, mz_end+1):
-        mask = (df_picked['m/z'] >= mz_int*1.00866491588-0.03) & (df_picked['m/z'] <= mz_int*1.00866491588+0.03)
+        mask = (df_picked['m/z'] >= mz_int*1.00866491588-0.1) & (df_picked['m/z'] <= mz_int*1.00866491588+0.1)
         peaks_in_range = df_picked[mask]        
         if not peaks_in_range.empty:
-            #closest_peak = peaks_in_range.loc[peaks_in_range['Intensity'].idxmax()]
-            intensity_diff = abs(peaks_in_range['Intensity'].values - tp_deut_iso_theo[mz_int]*max_ins/tp_deut_iso_theo.max())
-            closest_peak_index = np.argmin(intensity_diff)
-            closest_peak = peaks_in_range.iloc[closest_peak_index]
+            closest_peak = peaks_in_range.loc[peaks_in_range['Intensity'].idxmax()]
+            # intensity_diff = abs(peaks_in_range['Intensity'].values - tp_deut_iso_theo[mz_int]*max_ins/tp_deut_iso_theo.max())
+            # closest_peak_index = np.argmin(intensity_diff)
+            # closest_peak = peaks_in_range.iloc[closest_peak_index]
             selected_mz.append(closest_peak['m/z'])
             selected_intensity.append(closest_peak['Intensity'])
             #print(max_peak)
             sn_ratio.append(calculate_SN(spectrum, closest_peak['m/z']))
 
+    
+    selected_mz = np.array(selected_mz)
+    selected_intensity = np.array(selected_intensity)
+    sn_ratio = np.array(sn_ratio)
+
+    smoothed_selected_intensity = medfilt(selected_intensity, kernel_size=3)
+    smoothed_highest_index = np.argmax(smoothed_selected_intensity)
+    highest_index = np.where(selected_intensity == max(selected_intensity[max(smoothed_highest_index-3,0):min(smoothed_highest_index+3+1, len(selected_intensity))]))[0][0]
+
+
+    selected_peak_indexes_1 = filter_outliers(np.stack([selected_mz, selected_intensity], axis=1),
+                                            highest_index) 
+
+    filtered_mz = selected_mz[selected_peak_indexes_1]
+    filtered_intensity = selected_intensity[selected_peak_indexes_1]
+    filtered_sn_ratio = selected_mz[selected_peak_indexes_1]
+
+
+    selected_peak_indexes_2 = np.arange(max(np.argmax(filtered_intensity)-5, 0), 
+                                        min(np.argmax(filtered_intensity)+5+1, len(filtered_intensity))) 
+
+
     selected_df = pd.DataFrame({
-        'm/z': selected_mz,
-        'Intensity': selected_intensity,
-        'sn_ratio': sn_ratio
+        'm/z': filtered_mz[selected_peak_indexes_2],
+        'Intensity': filtered_intensity[selected_peak_indexes_2],
+        'sn_ratio': filtered_sn_ratio[selected_peak_indexes_2]
     })
 
     # round m/z to integer
@@ -226,7 +280,9 @@ def flat_tp_list(tp_lists):
 
 
 def get_large_error_tps(state, threshold=1.5):
-
+    '''
+    error across different charge states
+    '''
     timepoints_list = []
     for pep in state.peptides:
         grouped_timepoints = [list(v) for k, v in groupby([tp for tp in pep.timepoints if tp.deut_time != np.inf], key=attrgetter('deut_time'))]
@@ -330,12 +386,18 @@ def filter_peak_pickings(data):
 
 def refine_large_error_reps(state):
     
+    # remove low intensity timepoints
     low_intens_tps = find_low_intensity_tps(get_large_error_tps(state, threshold=0.3), threshold=5)
     tools.remove_tps_from_state(low_intens_tps, state)
     
+    # remove timepoints with large error across different charge states
     flat_large_error_list = flat_tp_list(get_large_error_tps(state, threshold=0.5)) 
     tools.remove_tps_from_state(flat_large_error_list, state)
 
+    # remove timepoints with large deviation from HDExaminer centroided #D
+    all_tps = [tp for pep in state.peptides for tp in pep.timepoints if tp.deut_time != np.inf]
+    large_diviation_tps = [tp for tp in all_tps if abs(tp.num_d - tools.get_num_d_from_iso(tp)) > 0.5]
+    tools.remove_tps_from_state(large_diviation_tps, state)
 
 
 def calculate_isoenv_std(hdxms_data_list:list):

@@ -120,7 +120,7 @@ def load_ranges_file(ranges_file, newbigdf, exclude=False):
     return cleaned
 
 
-def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein_sequence=None):
+def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein_sequence=None, fulld_approx=False):
     ''' 
     Load data from dataframe to HDXMSData object
 
@@ -171,10 +171,10 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein
         if np.isnan(timepoint.num_d):
             continue
         else:
-            # if timepoint.deut_time == np.inf:
-            #     # add inf timepoint as a real timepoint, 1e8s
-            #     real_inf_timepoint = Timepoint(peptide, 100000000, row['#D'], row['Stddev'],int(row['Charge']))
-            #     peptide.add_timepoint(real_inf_timepoint)
+            if timepoint.deut_time == np.inf and fulld_approx:
+                # add inf timepoint as a real timepoint, 1e8s
+                real_inf_timepoint = Timepoint(peptide, 100000000, row['#D'], row['Stddev'],int(row['Charge']))
+                peptide.add_timepoint(real_inf_timepoint)
             peptide.add_timepoint(timepoint)
     
     return hdxms_data
@@ -296,7 +296,7 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                     csv_name = f'Non-D-1-z{tp.charge_state}.csv'
                     csv_file_path = os.path.join(pep_sub_folder, csv_name)
                 elif tp.deut_time == 100000000:
-                    csv_name = glob(f'{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv')[0]
+                    csv_file_path = glob(f'{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv')[0]
 
                 else:
                     csv_name = f'{int(tp.deut_time)}s-1-z{tp.charge_state}.csv'
