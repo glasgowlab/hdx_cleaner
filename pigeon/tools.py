@@ -263,7 +263,7 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
 
     for i in range(steps):
         original_p3 = p3.copy()
-        change = np.random.normal(0, 0.2, p3.size)  # Generate change for the entire p3 array
+        change = np.random.normal(0, 0.1, p3.size)  # Generate change for the entire p3 array
         p3 += change
         p3[p3 < 0] = 1e-10  # Prevent negative values
         p3 = normlize(p3)  # Normalize p3
@@ -293,7 +293,7 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
             best_models.sort(key=lambda x: x[0])
             return best_models[0]
         
-        elif new_loss > 0.2 and continus_rejects > 100:
+        elif new_loss > 0.2 and continus_rejects > 500:
 
             return (previous_loss, None)
 
@@ -544,7 +544,7 @@ def calculate_coverages(hdxms_datas, state_name):
 
 
 
-def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protein_state, base_directory, making_chunks=False):
+def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protein_state, base_directory, making_chunks=False, if_original_bayesian_hdx=False):
     """
     Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
 
@@ -560,8 +560,12 @@ def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protei
         with open('../../lib/run_bayesian_hdx_template_chunks.txt', 'r') as file:
             script_template = file.read()
     else:
-        with open('../../lib/run_bayesian_hdx_template.txt', 'r') as file:
-            script_template = file.read()
+        if if_original_bayesian_hdx:
+            with open('../../lib/run_original_bayesian_hdx_template.txt', 'r') as file:
+                script_template = file.read()
+        else:
+            with open('../../lib/run_bayesian_hdx_template.txt', 'r') as file:
+                script_template = file.read()
 
     # Generate the script using the template
     generated_script = script_template.format(

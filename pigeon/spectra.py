@@ -22,11 +22,11 @@ def get_theoretical_isotope_distribution(timepoint):
     return the mono charge state iso
     """    
     # Create an AASequence object from the peptide sequence
-    peptide_obj = oms.AASequence.fromString(timepoint.peptide.sequence)
+    peptide_obj = oms.AASequence.fromString(timepoint.peptide.identifier.split(' ')[1])
 
     # Get the empirical formula of the peptide
     formula = peptide_obj.getFormula()
-    isotope_generator = oms.CoarseIsotopePatternGenerator(10)
+    isotope_generator = oms.CoarseIsotopePatternGenerator(len(timepoint.peptide.identifier.split(' ')[1]))
     isotope_distribution = isotope_generator.run(formula)
 
     # Get the monoisotopic mass

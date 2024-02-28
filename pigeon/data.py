@@ -3,6 +3,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import itertools
 from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func, average_timepoints
+from tools import event_probabilities
 import spectra
 from hdxrate import k_int_from_sequence
 import random
@@ -790,12 +791,16 @@ class SimulatedData:
             try:
                 protein_state.add_peptide(peptide_obj)
                 for tp_i, tp in enumerate(self.timepoints):
-                    pep_incorp = sum(self.incorporations[peptide_obj.start-1:peptide_obj.end][:,tp_i])
+                    tp_raw_deut = self.incorporations[peptide_obj.start-1:peptide_obj.end][:,tp_i]
+                    pep_incorp = sum(tp_raw_deut)
                     #random_stddev = peptide_obj.theo_max_d * self.noise_level * random.uniform(-1, 1)
                     random_stddev = 0
                     tp_obj = Timepoint(peptide_obj, tp, pep_incorp + random_stddev, random_stddev,)
-                    
-                    isotope_envelope = spectra.get_theo_ms(tp_obj)
+
+                    t0_theo = spectra.get_theoretical_isotope_distribution(tp_obj)['Intensity'].values
+                    p_D = event_probabilities(tp_raw_deut)
+
+                    isotope_envelope = np.convolve(t0_theo, p_D)
                     isotope_noise = np.array([random.uniform(-1, 1)* self.noise_level *peak for peak in isotope_envelope])
                     tp_obj.isotope_envelope = isotope_envelope + isotope_noise
                     #tp_obj.isotope_envelope = isotope_envelope
