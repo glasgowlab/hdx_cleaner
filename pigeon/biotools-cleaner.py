@@ -15,7 +15,6 @@ score_threshold = 150
 ppm_threshold = 7
 maxfev = 800
 plots = 'csvplots'
-outpath = 'CLEAN.csv'
 overlap_method = 'select'
 skip_res = 2
 ymin=0.9
@@ -25,14 +24,17 @@ ymin=0.9
 def inthelper(n):
     if n == '-':
         return 0
-    return int(n.strip())
+    if type(n) is str:
+        return int(n.strip())
+    return int(n)
 
 def invfn(x, a, b, c):
     return c + a / (x - b)
 
 def formatfill(data):
-    return (len(data), np.mean(data['Score']), 100 * data['Score'].value_counts()[0] / len(data))
-
+    if 0 in data['Score'].values:
+        return (len(data), np.mean(data['Score']), 100 * data['Score'].value_counts()[0] / len(data))
+    return (len(data), np.mean(data['Score']), 0.)
 def redflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical and nonoverlapping
     RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
@@ -72,7 +74,6 @@ if args.MZC: MZcutoff = args.MZC
 if args.scoreC: score_threshold = args.scoreC
 if args.ppmC: ppm_threshold = args.ppmC
 if args.maxfev: maxfev = args.maxfev
-if args.out: outpath = args.out
 if args.plots: plots = args.plots
 if args.overlap: overlap_method = args.overlap
 print(args)
@@ -91,9 +92,16 @@ for table in args.table:
 #export data df as csv  
 #data.to_csv('og_data.csv', index=False)
 
-data.dropna(inplace=True, subset=['Int.'])
-data = data.loc[data['Tree hierarchy'] != 'no peak']
+data = data[data['Meas. M/z'] != '-']
+data = data[data['Dev.(ppm)'] != '-']
+data.dropna(subset=['Sequence'], inplace=True)
+data['Score'].fillna(0, inplace=True)
 data['Score'] = data['Score'].apply(inthelper)
+
+# data = data.loc[data['Meas. M/z'] != '-']
+# data['Score'] = data['Score'].apply(int)
+
+data = data.loc[data['Tree hierarchy'] != 'no peak']
 data.sort_values('Score', inplace=True, ascending=False)
 print('pooled: ' + str(data.shape))
 print('mean score: ' + str(np.mean(data['Score'])))
@@ -101,7 +109,7 @@ ymax=len(data)
 xmax = max(data['Score'])
 
 #export data df as csv
-#data.to_csv('og_data_reduced.csv')
+data.to_csv('test.csv')
 
 # TEMP scatterplot of full dataset
 
@@ -268,9 +276,9 @@ for i in topscores.index:
         if r['Score'].iloc[0] == max(grp['Score']):
             ties = ties + 1
         if r['Score'].iloc[0] <= max(grp['Score']):
-            print(r[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
-            print(grp[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
-            print('\n\n')
+            # print(r[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
+            # print(grp[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
+            # print('\n\n')
             flagged = pd.concat([flagged, r])
             continue
     if not overlap.empty:
@@ -325,7 +333,10 @@ if not flagged.empty:
     plt.ylim(ymin, ymax)
     plt.title("flagged: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(flagged))
     plt.hist(flagged['Score'],log=True, bins=100, range=[0,xmax])
-    print('% 0: ' + str(100 * flagged['Score'].value_counts()[0] / len(flagged)))
+    if 0 in flagged['Score'].values:
+        print('% 0: ' + str(100 * flagged['Score'].value_counts()[0] / len(flagged)))
+    else:
+        print('% 0: ' + str(0))
     print()
     plt.savefig(plots + '/hist-scores-flagged.png')
 
@@ -354,7 +365,10 @@ if not yellow.empty:
     plt.ylim(ymin, ymax)
     plt.title("yellow: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(yellow))
     plt.hist(flagged['Score'],log=True, bins=100, range=[0,xmax])
-    print('% 0: ' + str(100 * yellow['Score'].value_counts()[0] / len(yellow)))
+    if 0 in yellow['Score'].values:
+        print('% 0: ' + str(100 * yellow['Score'].value_counts()[0] / len(yellow)))
+    else:
+        print('% 0: ' + str(0))
     print()
     plt.savefig(plots + '/hist-scores-yellow.png')
 
@@ -363,7 +377,8 @@ clean = topscores.drop(flagged.index.union(yellow.index))
 # SORT & SAVE TO CSV
 
 clean.sort_values(['Start', 'End'], inplace=True)
-clean.to_csv(outpath, index=False)
+if args.out:
+    clean.to_csv(args.out, index=False)
 if args.rangeslist:
     clean[['Start', 'End']].to_csv(args.rangeslist, index=False)
 print('clean: ' + str(clean.shape))
@@ -387,5 +402,8 @@ plt.ylabel('n')
 plt.ylim(ymin,ymax)
 plt.title("clean: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(clean))
 plt.hist(clean['Score'],log=True, bins=100, range=[0,xmax])
-print('% 0: ' + str(100 * clean['Score'].value_counts()[0] / len(clean)))
+if 0 in clean['Score'].values:
+    print('% 0: ' + str(100 * clean['Score'].value_counts()[0] / len(clean)))
+else:
+    print('% 0: ' + str(0))
 plt.savefig(plots + '/hist-scores-clean.png')
