@@ -24,17 +24,14 @@ conditions = data.Conditions(temperature=293., pH=7.0, saturation=1.0)
 dataset_list = []
 for i, infile in enumerate(infile_list):
     dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=conditions, error_estimate=0.5, n_fastamides=2, offset=0)
-    raw_spectra_path = f"{base_directory}/spectra_{{exp_names[i]}}/"
-    hxio.load_raw_ms_from_pegion(dataset, raw_spectra_path)
     dataset_list.append(dataset)
 
 # Merge datasets
-merged_dataset = data.merge_mutiple_datasets(dataset_list)
-tools.refine_dataset(merged_dataset)
+merged_dataset = dataset_list[0]
 
 # Initialize model and system
 state_name = f"{protein_state}"
-outputdir = f"{base_directory}/bayesian_hdx_output"
+outputdir = f"{base_directory}/bayesian_hdx_output_original"
 num_exp_bins = 40
 nsteps = 1000
 sys = system.System(output_dir=outputdir, noclobber=False)
@@ -42,7 +39,7 @@ mol = sys.add_macromolecule(sequence, "Test", initialize_apo=False)
 
 # Add state and scoring function
 state = mol.add_state(f"{{state_name}}_1")
-state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModelIsotope(state, truncated=False))
+state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModel(state, truncated=False))
 
 # Add data to molecule state
 state.add_dataset(merged_dataset)

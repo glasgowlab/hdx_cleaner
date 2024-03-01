@@ -120,7 +120,7 @@ def load_ranges_file(ranges_file, newbigdf, exclude=False):
     return cleaned
 
 
-def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein_sequence=None, fulld_approx=False):
+def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein_sequence=None, fulld_approx=False, saturation=1.0):
     ''' 
     Load data from dataframe to HDXMSData object
 
@@ -130,7 +130,7 @@ def load_dataframe_to_hdxmsdata(df, protein_name="Test", n_fastamides=2, protein
     cleaned: dataframe containing cleaned data
     
     '''
-    hdxms_data = HDXMSData(protein_name, n_fastamides, protein_sequence=protein_sequence)
+    hdxms_data = HDXMSData(protein_name, n_fastamides, protein_sequence=protein_sequence, saturation=saturation)
     
     # Iterate over rows in the dataframe
     for _, row in df.iterrows():

@@ -150,9 +150,11 @@ def subtract_peptides(peptide_1, peptide_2):
             p3 = force_to_envelope(deconvolute_fft(p1, p2))
             best_model = deconvolute_iso(p1, p2, p3, steps=2000)
             if best_model[1] is None:
-                continue # skip if no best model found for the timepoint
+                continue 
             else:
                 timepoint.isotope_envelope = best_model[1]
+                if abs(get_centroid_iso(timepoint) - timepoint.num_d) > 0.5:
+                    continue
                 new_peptide.add_timepoint(timepoint)
 
         else:
@@ -262,45 +264,41 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
     continus_rejects = 0
 
     for i in range(steps):
-        original_p3 = p3.copy()
-        change = np.random.normal(0, 0.1, p3.size)  # Generate change for the entire p3 array
-        p3 += change
-        p3[p3 < 0] = 1e-10  # Prevent negative values
-        p3 = normlize(p3)  # Normalize p3
-        p3 = force_to_envelope(p3) #force to envelope
+        for j in range(len(p3)):
+            original_p3_j = p3[j]
+            change = np.random.normal(0, 0.1)  # Generate change for the current peak
+            p3[j] += change
+            p3[j] = max(p3[j], 1e-10)  # Prevent negative values
+            
+            p3 = normlize(p3)  # Normalize p3 after all individual changes
+            p3 = force_to_envelope(p3)  # Force to envelope
 
-        # Calculate new loss
-        p1_estimated = convolve(p3, p2)
-        p1_estimated = normlize(p1_estimated)
-        new_loss = get_sum_ae(p1, p1_estimated)/num_peaks
+            # Calculate new loss 
+            p1_estimated = convolve(p3, p2)
+            p1_estimated = normlize(p1_estimated)
+            new_loss = get_sum_ae(p1, p1_estimated) / num_peaks
 
-
-        # Decide whether to accept the change
-        if metropolis_criterion(previous_loss, new_loss, temperature):
-            previous_loss = new_loss
-            continus_rejects = 0
-        else:
-            # Revert the change
-            p3 = original_p3
-            continus_rejects += 1
+            # Decide whether to accept the change
+            if metropolis_criterion(previous_loss, new_loss, temperature):
+                previous_loss = new_loss
+                continus_rejects = 0
+            else:
+                # Revert the change for the current peak
+                p3[j] = original_p3_j
+                continus_rejects += 1
 
         best_models.append((previous_loss, p3.copy()))
-
         temperature *= 0.99  # Decrease the temperature
 
-        if new_loss < 0.1 or ( 0.1 < new_loss <0.2 and continus_rejects > 20):
-
+        if new_loss < 0.1 or (0.1 < new_loss < 0.2 and continus_rejects > 20):
             best_models.sort(key=lambda x: x[0])
             return best_models[0]
-        
         elif new_loss > 0.2 and continus_rejects > 500:
-
             return (previous_loss, None)
 
+        #Optional: Uncomment to see progress every 100 steps
         # if i % 100 == 0:
-        #     print(i, previous_loss) 
-    # print(i, previous_loss)
-    
+        #     print(i, previous_loss)
 
     
 
@@ -518,19 +516,20 @@ def backexchange_for_peps_no_data(hdxms_data_list):
     '''
     Calculate the average backexchange for all peptides in the list of hdxms_data objects and correct the peptides has no data
     '''
+    for hdxms_data in hdxms_data_list:
 
-    all_peps = [pep for data in hdxms_data_list for state in data.states for pep in state.peptides]
-    pep_with_exp_mad_d = [pep for pep in all_peps if pep.max_d != pep.theo_max_d]
-    avg_backexchange = np.mean([pep.max_d/pep.theo_max_d for pep in pep_with_exp_mad_d])
-    
-    pep_with_no_exp_mad_d = [pep for pep in all_peps if pep.max_d == pep.theo_max_d]
-    for pep in pep_with_no_exp_mad_d:
-        max_d = pep.theo_max_d * avg_backexchange
-        inf_tp = data.Timepoint(pep, np.inf, max_d, np.nan)
-        pep.add_timepoint(inf_tp)
-       
-    print('Number of peptides with no data: {}'.format(len(pep_with_no_exp_mad_d)))
-    print('Average backexchange for peptides with no data: {}'.format(avg_backexchange))
+        all_peps = [pep for state in hdxms_data.states for pep in state.peptides]
+        pep_with_exp_max_d = [pep for pep in all_peps if pep.get_timepoint(np.inf) is not None]
+        pep_with_no_exp_mad_d = [pep for pep in all_peps if not pep in pep_with_exp_max_d]
+        avg_backexchange = np.mean([pep.max_d/pep.theo_max_d for pep in pep_with_exp_max_d])
+        
+        for pep in pep_with_no_exp_mad_d:
+            max_d = pep.theo_max_d * avg_backexchange
+            inf_tp = data.Timepoint(pep, np.inf, max_d, np.nan)
+            pep.add_timepoint(inf_tp)
+        
+        print('Number of peptides with no data: {}'.format(len(pep_with_no_exp_mad_d)))
+        print('Average backexchange for peptides with no data: {}'.format(avg_backexchange))
 
 
 

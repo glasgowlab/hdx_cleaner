@@ -86,13 +86,14 @@ class HDXMSDataCollection:
 
 
 class HDXMSData:
-    def __init__(self, protein_name, n_fastamides=2, protein_sequence=None):
+    def __init__(self, protein_name, n_fastamides=2, protein_sequence=None, saturation=1):
         self.protein_name = protein_name
         self.states = []
         self.n_fastamides = n_fastamides
         if protein_sequence is None:
             raise ValueError("Protein sequence is required")
         self.protein_sequence = protein_sequence
+        self.saturation = saturation
 
     def add_state(self, state):
         # Check if state already exists
@@ -314,7 +315,7 @@ class Peptide:
     def theo_max_d(self):
         num_prolines = self.sequence.count('P')
         theo_max_d = len(self.sequence) - num_prolines
-        return theo_max_d
+        return theo_max_d*self.protein_state.hdxms_data.saturation
     
     @property
     def fit_results(self):
