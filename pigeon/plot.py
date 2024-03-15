@@ -90,7 +90,7 @@ def plot_uptake_plots(peptide_exchange_dict, timepoints, stdev_dict_dict, color_
     plt.close('all')
 
 class UptakePlot:
-    def __init__(self, hdxms_datas, identifier:str, color_dict=None, if_plot_fit=True,  figure=None, ax=None):
+    def __init__(self, hdxms_datas, identifier:str, states_subset=None, color_dict=None, if_plot_fit=True,  figure=None, ax=None):
         '''
         hdxms_datas: list of class HDXMSData objects
         '''
@@ -103,7 +103,9 @@ class UptakePlot:
         self.ax = ax
         #self.title = self.make_title()
         #self.title = identifier
+        self.states_subset = states_subset
         self.uptakeplot = self.make_uptakeplot()
+
 
 
     def make_uptakeplot(self):
@@ -166,6 +168,9 @@ class UptakePlot:
             hdxms_data_df = pd.DataFrame()
             
             for state in hdxms_data.states:
+                if self.states_subset is not None and state.state_name not in self.states_subset:
+                    continue
+
                 peptide = state.get_peptide(self.identifier)
                 
                 if peptide is not None:

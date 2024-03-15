@@ -8,11 +8,14 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.cluster import KMeans
 from hdxrate import k_int_from_sequence
-
+from tools import calculate_simple_deuterium_incorporation, event_probabilities, get_sum_ae
+from plot import UptakePlot
+from matplotlib.lines import Line2D
+from sklearn.metrics import mean_squared_error
 
 
 class Analysis:
-    def __init__(self, protein_state,):
+    def __init__(self, protein_state, temperature=293., pH=7.):
         
         if not isinstance(protein_state, list):
             self.protein_state = [protein_state]
@@ -23,7 +26,9 @@ class Analysis:
         self.__minimize_overlap_by_single_res(initial_sliding_windows)
         self.__minimize_overlap_by_adjacent_windows(initial_sliding_windows)
         self.maximum_resolution_limits = self.__find_continuous_blocks(initial_sliding_windows)
-
+        self.protein_sequence = self.protein_state[0].hdxms_data.protein_sequence
+        self.log_k_init = np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
+        self.coverage = self.calculate_coverages()
 
     
     def find_mini_overlap(self, peps_covering,):
@@ -64,7 +69,8 @@ class Analysis:
             #! all_peptides must contain substracted peptides
             peps_covering = [pep for pep in all_peptides if pep.start <= i+1 <= pep.end]
             
-            if len(peps_covering) == 0 or self.protein_state[0].hdxms_data.protein_sequence[i] == 'P':
+            #if len(peps_covering) == 0 or self.protein_state[0].hdxms_data.protein_sequence[i] == 'P':
+            if len(peps_covering) == 0:
                 continue
             elif len(peps_covering) == 1:
                 min_covering_pep = (peps_covering[0].start, peps_covering[0].end)
@@ -181,26 +187,47 @@ class Analysis:
         return blocks
 
 
+    def _convert_logP_to_log_kex(self, df):
+        bayesian_hdx_df_log_kex = pd.DataFrame()
+        for col in df.columns:
+            bayesian_hdx_df_log_kex[col] = self.log_k_init[col] - df[col]
+
+        bayesian_hdx_df_log_kex *= -1 # convert to -log_kex
+        self.bayesian_hdx_df_log_kex = bayesian_hdx_df_log_kex
+
+
     def load_bayesian_hdx_oupt(self, bayesian_hdx_data_file, N=50):
         pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_file)
         self.bayesian_hdx_df = pof.get_best_scoring_models_pf_df(N=N)
+        
+        self._convert_logP_to_log_kex(self.bayesian_hdx_df)
 
         # run clustering
         self.clustering_results()
         
 
-    def load_bayesian_hdx_oupt_chunks(self, chunk_size, chunk_num, bayesian_hdx_data_folder, N=50):
+    def load_bayesian_hdx_oupt_chunks(self, state_name, chunk_size, chunk_num, bayesian_hdx_data_folder, run_num=1, N=50):
 
-        df_list = []        
+        df_list_all = []        
         range_chunks = [(i*chunk_size+1, (i+1)*chunk_size) for i in range(chunk_num)]
-        bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith('.dat')])
 
-        for i, chunk in enumerate(range_chunks):
-            pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_files[i])
-            df = pof.get_best_scoring_models_pf_df(N=N)
-            df_list.append(df.iloc[:, chunk[0]-1:chunk[1]]) 
-        self.bayesian_hdx_df = pd.concat(df_list, axis=1)
-       
+        for run_index in range(1, run_num+1):
+            df_list_i = []
+            bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith(f'{run_index}.dat') and state_name in f])
+
+            for i, chunk in enumerate(range_chunks):
+                pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_files[i])
+                df = pof.get_best_scoring_models_pf_df(N=N)
+                df_list_i.append(df.iloc[:, chunk[0]-1:chunk[1]]) 
+            
+            df_run_i = pd.concat(df_list_i, axis=1)
+            #df_run_i['run_index'] = run_index
+            df_list_all.append(df_run_i)
+        
+        self.bayesian_hdx_df = pd.concat(df_list_all, axis=0)
+        
+        self._convert_logP_to_log_kex(self.bayesian_hdx_df)
+
         # run clustering
         self.clustering_results()
 
@@ -223,26 +250,53 @@ class Analysis:
         self.results_obj = results
 
 
+        for res in results.residues:
+            if hasattr(res, 'mini_pep'):
+                res.clustering_results_logP = [res.log_k_init + i for i in res.mini_pep.clustering_results_log_kex] # log_kex is negative
+                res.std_within_clusters_logP = mini_pep.std_within_clusters_log_kex
+
+
+
     def _clustering_a_mini_pep(self, k, v0, v1):
 
         
         # v0 and v1 are 1-based
         # Apply remove_outliers to each column and collect results
-        cleaned_data = [remove_outliers(self.bayesian_hdx_df[col]) for col in self.bayesian_hdx_df.iloc[:,v0-1:v1].columns] 
-        
+        #cleaned_data = [remove_outliers(self.bayesian_hdx_df[col]) for col in self.bayesian_hdx_df.iloc[:,v0-1:v1].columns] 
+        cleaned_data = [remove_outliers(self.bayesian_hdx_df_log_kex[col]) for col in self.bayesian_hdx_df_log_kex.iloc[:,v0-1:v1].columns] 
         
         initial_centers = np.array([np.mean(col) for col in cleaned_data if col.size !=0]).reshape(-1, 1)  
         num_clusters = initial_centers.shape[0]
         
+        # add 0 if Proline in the mini_pep
+        num_Ps = self.protein_sequence[v0-1:v1].count('P')
+        
         if num_clusters == 0:
+            if num_Ps == 1:
+                return np.array([0]), np.array([0])
             return np.array([np.nan])
         
         pool_values = np.concatenate(cleaned_data).flatten()
         pool_values = pool_values[~np.isnan(pool_values)]
         
         if len(pool_values) != 0:
-            k_cluster = KMeans(n_clusters=num_clusters, random_state=0, init=initial_centers, n_init='auto').fit(pool_values.reshape(-1, 1))    
-            return np.sort(k_cluster.cluster_centers_.flatten())
+            k_cluster = KMeans(n_clusters=num_clusters, random_state=0, init=initial_centers, n_init='auto').fit(pool_values.reshape(-1, 1))
+            sorted_indices = np.argsort(k_cluster.cluster_centers_.flatten())
+
+            std_within_cluster = np.zeros(num_clusters)
+            for i in range(num_clusters):
+                cluster_mask = k_cluster.labels_ == i
+                cluster_points = pool_values[cluster_mask]
+                center = k_cluster.cluster_centers_[i]
+                std_within_cluster[i] = np.std(cluster_points)
+                
+
+            if num_Ps > 0:
+
+                return np.append([0]*num_Ps,k_cluster.cluster_centers_.flatten()[sorted_indices]), np.append([0]*num_Ps,std_within_cluster[sorted_indices])
+
+            else:
+                return k_cluster.cluster_centers_.flatten()[sorted_indices], std_within_cluster[sorted_indices]
 
     
         
@@ -258,20 +312,24 @@ class Analysis:
         #self.clustering_results()
         
         xx = np.array([res.resid for res in self.results_obj.residues if res.is_nan() == False])
-        yy = np.concatenate([mini_pep.clustering_results for mini_pep in self.results_obj.mini_peps])
+        yy = np.concatenate([mini_pep.clustering_results_log_kex for mini_pep in self.results_obj.mini_peps])
+        yy_std = np.concatenate([mini_pep.std_within_clusters_log_kex for mini_pep in self.results_obj.mini_peps])
 
         # padding all the residues
         padded_xx = np.arange(1, self.results_obj.n_residues+1)
         padded_yy = np.zeros(self.results_obj.n_residues)
+        padded_yy_std = np.zeros(self.results_obj.n_residues)
 
         for i in range(len(xx)):
             padded_yy[xx[i]-1] = yy[i]
+            padded_yy_std[xx[i]-1] = yy_std[i]
         
 
         if ax is None:
             fig, ax = plt.subplots(figsize=(20, 5))
         
-        sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5)
+        #sns.barplot(x=padded_xx, y=padded_yy, yerr=padded_yy_std, ax=ax, label=label, alpha=0.5)
+        ax.bar(padded_xx, padded_yy, yerr=padded_yy_std, alpha=0.5, label=label)
         #sns.barplot(x=range(1, len(xx)+1), y=xx, alpha=0.5, label='bayesian_hdx', ax=ax)
         
         for mini_pep in self.results_obj.mini_peps:
@@ -284,15 +342,15 @@ class Analysis:
         #plt.legend(loc='upper left')
         plt.tight_layout()
         plt.xlabel('Resid')
-        plt.ylabel('logP')
+        plt.ylabel('-log_kex')
         plt.xticks(rotation=90);
         ax.set_ylim(0, 17)
         
         
         #add the coverage heatmap
-        coverage = self.calculate_coverages()
-        for i in range(len(coverage)):
-            color_intensity = coverage[i] / 20 # coverage.max()  # Normalizing the data for color intensity
+        #coverage = self.calculate_coverages()
+        for i in range(len(self.coverage)):
+            color_intensity = self.coverage[i] / 20 # coverage.max()  # Normalizing the data for color intensity
             rect = patches.Rectangle((i, 16), 1, height, color=plt.cm.Blues(color_intensity))
             ax.add_patch(rect)
             
@@ -356,8 +414,8 @@ class Results(object):
         raise Exception('mini_pep not found')
     
     @property
-    def log_k_init(self, temperature=293., pH=7.):
-        return np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
+    def log_k_init(self):
+        return self.analysis_object.log_k_init
 
        
 class Residue(object):
@@ -372,9 +430,10 @@ class Residue(object):
 
     def set_mini_pep(self, mini_pep):
         self.mini_pep = mini_pep
-        
+
     def is_nan(self):
-        return self.resluts_obj.analysis_object.bayesian_hdx_df.mean().isna()[self.resindex]
+        #return self.resluts_obj.analysis_object.bayesian_hdx_df.mean().isna()[self.resindex]
+        return self.resluts_obj.analysis_object.coverage[self.resindex] == 0
     
     @property
     def log_k_init(self):
@@ -388,16 +447,18 @@ class Residue(object):
             return any([_if_off_time_window(self.log_k_init, log_PF, time_window=time_window) for log_PF in self.mini_pep.clustering_results])
         
 
-def residue_d_uptake(rate, time):
-    # Calculates the deuterium incorporation for a log(kex)
-    # at time = t (seconds) assuming full saturation
-    return 1 - np.exp(-1*(10**rate)*time)
+    # def get_incorporation(self, time):
+    #     #res_logP = np.average(self.mini_pep.clustering_results)
+    #     log_kex = np.average(self.mini_pep.clustering_results_log_kex)
+    #     incorporation = calculate_simple_deuterium_incorporation(log_kex, time)
+    #     return incorporation
+    
 
 
 def _if_off_time_window(log_k_init, log_PF, time_window):
-    if residue_d_uptake(log_k_init-log_PF, time_window[0]) > 0.99:
+    if calculate_simple_deuterium_incorporation(log_k_init-log_PF, time_window[0]) > 0.99:
         return True
-    elif residue_d_uptake(log_k_init-log_PF, time_window[1]) < 0.01:
+    elif calculate_simple_deuterium_incorporation(log_k_init-log_PF, time_window[1]) < 0.01:
         return True
     else:
         return False
@@ -414,7 +475,8 @@ class MiniPep(object):
         self.residues = []
 
     def set_clustering_results(self, clustering_results):
-        self.clustering_results = clustering_results
+        self.clustering_results_log_kex = clustering_results[0]
+        self.std_within_clusters_log_kex = clustering_results[1]
         
     def if_single_residue(self):
         return self.start == self.end
@@ -759,3 +821,113 @@ def remove_outliers(data):
 
     # Remove outliers
     return data[(data >= lower_bound) & (data <= upper_bound)]
+
+
+def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=False, state_name='SIM'):
+
+    pep_start = peptide_obj.start
+    pep_end = peptide_obj.end
+    time_points = sorted([tp.deut_time for tp in peptide_obj.timepoints if tp.deut_time > 0])
+    #deut_times = np.logspace(np.log10(time_points[0]), np.log10(time_points[-1]), 1000)
+    
+    fitted_uptakes = []
+
+    for deut_time in time_points:
+        peptide_incorporation = 0
+        mini_peps_inrange = [mini_pep for mini_pep in ana_obj.results_obj.mini_peps if mini_pep.start >= pep_start and mini_pep.end <= pep_end]
+
+        mini_cover_resids = set([res.resid for mini_pep in mini_peps_inrange for res in mini_pep.residues])
+
+        if set(range(pep_start, pep_end+1)) != mini_cover_resids:
+            raise ValueError('mini_peps not cover all residues')
+        
+        else:
+            log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
+            peptide_incorporation = 0
+            for log_kex in log_kex_inrange:
+                peptide_incorporation += calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)
+            fitted_uptakes.append(peptide_incorporation)
+    
+    fitted_uptakes = np.array(fitted_uptakes)
+
+    exp_uptakes = np.array([peptide_obj.get_timepoint(tp).num_d for tp in time_points])
+    rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes))
+
+    if if_plot:
+        uptake = UptakePlot(hdxms_data_list,  peptide_obj.identifier, states_subset=[state_name], if_plot_fit=False)
+        uptake.uptakeplot.axes[0].plot(time_points, fitted_uptakes, label='model', color='red', linestyle='-')
+        
+        legend_elements = [Line2D([0], [0], color='black', lw=4, linestyle='-', label='exp'),
+                           Line2D([0], [0], color='red', lw=4, linestyle='-', label='model')]
+
+        uptake.uptakeplot.axes[0].legend(handles=legend_elements, loc='lower right')
+
+        return rmse, uptake.uptakeplot
+
+    else:
+        return rmse
+
+
+
+def check_fitted_isotope_envelope(ana_obj, timepont_obj, if_plot=False):
+
+
+    pep_start = timepont_obj.peptide.start
+    pep_end = timepont_obj.peptide.end
+
+    deut_time = timepont_obj.deut_time
+    
+    mini_peps_inrange = [mini_pep for mini_pep in ana_obj.results_obj.mini_peps if mini_pep.start >= pep_start and mini_pep.end <= pep_end]
+
+    mini_cover_resids = set([res.resid for mini_pep in mini_peps_inrange for res in mini_pep.residues])
+
+    if set(range(pep_start, pep_end+1)) != mini_cover_resids:
+        raise ValueError('mini_peps not cover all residues')
+    
+    else:
+        log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
+        tp_raw_deut = []
+        for log_kex in log_kex_inrange:
+            tp_raw_deut.append(calculate_simple_deuterium_incorporation(-1*log_kex, deut_time))
+
+        full_d_scaler = timepont_obj.peptide.get_timepoint(np.inf).num_d/timepont_obj.peptide.theo_max_d
+        tp_raw_deut = np.array(tp_raw_deut)*full_d_scaler
+        p_D = event_probabilities(tp_raw_deut)
+
+        #t0_theo = spectra.get_theoretical_isotope_distribution(timepont_obj)['Intensity'].values
+        #fitted_isotope_envelope = np.convolve(t0_theo, p_D)
+
+        fitted_isotope_envelope = np.convolve(timepont_obj.peptide.get_timepoint(0).isotope_envelope, p_D)
+
+
+
+    if if_plot:
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+        
+        peak_num = np.where(timepont_obj.isotope_envelope>1e-6)[0][-1]
+        
+        stem1 = plt.stem(fitted_isotope_envelope[:peak_num], linefmt='r-', markerfmt='ro', basefmt='r-', label='model')
+        stem2 = plt.stem(timepont_obj.isotope_envelope[:peak_num], linefmt='k-', markerfmt='ko', basefmt='k-', label='exp')
+        plt.legend()
+        
+
+        title  =  f'{timepont_obj.peptide.protein_state.state_name}_{timepont_obj.peptide.identifier}_tp{int(deut_time)}'
+        plt.title(title, fontdict={'fontsize': 24})
+          
+        plt.setp(stem1[1], linewidth = 10,)
+        plt.setp(stem1[0], markersize = 20)
+        plt.setp(stem1[2], linewidth = 1.5)
+        
+        
+        plt.setp(stem2[1], linewidth = 5)
+        plt.setp(stem2[0], markersize = 10)
+        plt.setp(stem2[2], linewidth = 1)
+        
+        plt.xlabel('#heavy isotopes')
+        plt.ylabel('probability')
+        
+
+    sum_ae = get_sum_ae(fitted_isotope_envelope, timepont_obj.isotope_envelope)
+    return sum_ae
+

@@ -3,7 +3,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import itertools
 from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func, average_timepoints
-from tools import event_probabilities
+from tools import event_probabilities, calculate_simple_deuterium_incorporation
 import spectra
 from hdxrate import k_int_from_sequence
 import random
@@ -669,6 +669,7 @@ class SimulatedData:
         self.gen_seq()
         self.gen_logP()
         self.cal_k_init()
+        self.cal_k_ex()
         self.timepoints = np.insert(np.logspace(1, 12, 20), 0, 0)
         #self.timepoints = np.insert(self.timepoints, -1, 1e12)
         self.noise_level = noise_level
@@ -693,14 +694,14 @@ class SimulatedData:
         self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 293., 7.))
 
 
+    def cal_k_ex(self):
+        self.log_k_ex = self.log_k_init - self.logP
+
     def calculate_incorporation(self):
-        def calculate_simple_deuterium_incorporation(rate, time):
-            # Calculates the deuterium incorporation for a log(kex)
-            # at time = t (seconds) assuming full saturation
-            return 1 - np.exp(-1*(10**rate)*time)
+        
         incorporations = []
         for res_i in range(self.length):
-            log_kex = self.log_k_init[res_i] - self.logP[res_i]
+            log_kex = self.log_k_ex[res_i]
             incorporations.append(calculate_simple_deuterium_incorporation(log_kex, self.timepoints))
 
         self.incorporations = np.array(incorporations)

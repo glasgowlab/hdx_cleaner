@@ -293,8 +293,10 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                     tp.isotope_envelope = None
                     continue
                 elif tp.deut_time == 0:
-                    csv_name = f'Non-D-1-z{tp.charge_state}.csv'
-                    csv_file_path = os.path.join(pep_sub_folder, csv_name)
+                    #csv_name = f'Non-D-1-z{tp.charge_state}.csv'
+                    #csv_file_path = os.path.join(pep_sub_folder, csv_name)
+                    csv_file_path = glob(f'{pep_sub_folder}/Non-D-*-z{tp.charge_state}.csv')[0]
+                    
                 elif tp.deut_time == 100000000:
                     csv_file_path = glob(f'{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv')[0]
 

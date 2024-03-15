@@ -220,6 +220,9 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
             sn_ratio.append(calculate_SN(spectrum, closest_peak['m/z']))
 
     
+    if selected_intensity == []:
+        return None
+
     selected_mz = np.array(selected_mz)
     selected_intensity = np.array(selected_intensity)
     sn_ratio = np.array(sn_ratio)

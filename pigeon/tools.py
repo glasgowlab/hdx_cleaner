@@ -577,3 +577,9 @@ def generate_bayesian_hdx_script(install_dir,exp_names, protein_sequence, protei
 
     return generated_script
 
+
+def calculate_simple_deuterium_incorporation(rate, time):
+    # Calculates the deuterium incorporation for a log(kex)
+    # at time = t (seconds) assuming full saturation
+    return 1 - np.exp(-1*(10**rate)*time)
+
