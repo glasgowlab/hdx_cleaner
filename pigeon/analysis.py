@@ -328,8 +328,8 @@ class Analysis:
         if ax is None:
             fig, ax = plt.subplots(figsize=(20, 5))
         
-        #sns.barplot(x=padded_xx, y=padded_yy, yerr=padded_yy_std, ax=ax, label=label, alpha=0.5)
-        ax.bar(padded_xx, padded_yy, yerr=padded_yy_std, alpha=0.5, label=label)
+        sns.barplot(x=padded_xx, y=padded_yy, yerr=padded_yy_std, ax=ax, label=label, alpha=0.5)
+        #ax.bar(padded_xx, padded_yy, yerr=padded_yy_std, alpha=0.5, label=label)
         #sns.barplot(x=range(1, len(xx)+1), y=xx, alpha=0.5, label='bayesian_hdx', ax=ax)
         
         for mini_pep in self.results_obj.mini_peps:
