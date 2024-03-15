@@ -274,7 +274,7 @@ class Analysis:
         if num_clusters == 0:
             if num_Ps == 1:
                 return np.array([0]), np.array([0])
-            return np.array([np.nan])
+            return np.array([np.nan]), np.array([np.nan])
         
         pool_values = np.concatenate(cleaned_data).flatten()
         pool_values = pool_values[~np.isnan(pool_values)]
@@ -301,7 +301,7 @@ class Analysis:
     
         
 
-    def plot_pf_bar(self, ax=None, label=None, resolution_indicator_pos=15):
+    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15):
         #mini_peps_index = sorted(list(set([(v[0]-1, v[1]-1) for k, v in self.maximum_resolution_limits.items()])))
         # xx = self.bayesian_hdx_df.mean().values
 
@@ -328,7 +328,8 @@ class Analysis:
         if ax is None:
             fig, ax = plt.subplots(figsize=(20, 5))
         
-        sns.barplot(x=padded_xx, y=padded_yy, yerr=padded_yy_std, ax=ax, label=label, alpha=0.5)
+        sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5)
+        ax.errorbar(np.arange(len(padded_xx)), padded_yy, yerr=padded_yy_std, fmt='none', color='black')
         #ax.bar(padded_xx, padded_yy, yerr=padded_yy_std, alpha=0.5, label=label)
         #sns.barplot(x=range(1, len(xx)+1), y=xx, alpha=0.5, label='bayesian_hdx', ax=ax)
         
@@ -345,6 +346,7 @@ class Analysis:
         plt.ylabel('-log_kex')
         plt.xticks(rotation=90);
         ax.set_ylim(0, 17)
+        ax.set_xlim(-3, self.results_obj.n_residues+3)
         
         
         #add the coverage heatmap
@@ -354,7 +356,6 @@ class Analysis:
             rect = patches.Rectangle((i, 16), 1, height, color=plt.cm.Blues(color_intensity))
             ax.add_patch(rect)
             
-
 
         return ax
     
@@ -848,7 +849,12 @@ def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=F
                 peptide_incorporation += calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)
             fitted_uptakes.append(peptide_incorporation)
     
-    fitted_uptakes = np.array(fitted_uptakes)
+    
+    try:
+        full_d_scaler = peptide_obj.get_timepoint(np.inf).num_d/peptide_obj.theo_max_d
+    except:
+        full_d_scaler = 1 # for simulated data
+    fitted_uptakes = np.array(fitted_uptakes)*full_d_scaler
 
     exp_uptakes = np.array([peptide_obj.get_timepoint(tp).num_d for tp in time_points])
     rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes))
@@ -890,7 +896,10 @@ def check_fitted_isotope_envelope(ana_obj, timepont_obj, if_plot=False):
         for log_kex in log_kex_inrange:
             tp_raw_deut.append(calculate_simple_deuterium_incorporation(-1*log_kex, deut_time))
 
-        full_d_scaler = timepont_obj.peptide.get_timepoint(np.inf).num_d/timepont_obj.peptide.theo_max_d
+        try:
+            full_d_scaler = timepont_obj.peptide.get_timepoint(np.inf).num_d/timepont_obj.peptide.theo_max_d
+        except:
+            full_d_scaler = 1 # for simulated data
         tp_raw_deut = np.array(tp_raw_deut)*full_d_scaler
         p_D = event_probabilities(tp_raw_deut)
 
