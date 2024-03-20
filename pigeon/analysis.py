@@ -252,7 +252,7 @@ class Analysis:
 
         for res in results.residues:
             if hasattr(res, 'mini_pep'):
-                res.clustering_results_logP = [res.log_k_init + i for i in res.mini_pep.clustering_results_log_kex] # log_kex is negative
+                res.clustering_results_logP = np.array([res.log_k_init + i for i in res.mini_pep.clustering_results_log_kex]) # log_kex is negative
                 res.std_within_clusters_logP = mini_pep.std_within_clusters_log_kex
 
 
@@ -272,9 +272,10 @@ class Analysis:
         num_Ps = self.protein_sequence[v0-1:v1].count('P')
         
         if num_clusters == 0:
-            if num_Ps == 1:
-                return np.array([0]), np.array([0])
-            return np.array([np.nan]), np.array([np.nan])
+            if num_Ps > 0:
+                return np.array([np.inf]*num_Ps), np.array([np.inf]*num_Ps)
+            num_nan = v1 - v0 + 1
+            return np.array([np.nan]*num_nan), np.array([np.nan]*num_nan)
         
         pool_values = np.concatenate(cleaned_data).flatten()
         pool_values = pool_values[~np.isnan(pool_values)]
@@ -301,7 +302,7 @@ class Analysis:
     
         
 
-    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15):
+    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15, seq_pos=17):
         #mini_peps_index = sorted(list(set([(v[0]-1, v[1]-1) for k, v in self.maximum_resolution_limits.items()])))
         # xx = self.bayesian_hdx_df.mean().values
 
@@ -329,7 +330,12 @@ class Analysis:
             fig, ax = plt.subplots(figsize=(20, 5))
         
         sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5)
-        ax.errorbar(np.arange(len(padded_xx)), padded_yy, yerr=padded_yy_std, fmt='none', color='black')
+        #ax.errorbar(np.arange(len(padded_xx)), padded_yy, yerr=padded_yy_std, fmt='none', color='black')
+        
+        #manutally add the error bar
+        for i in range(len(padded_xx)):
+            ax.plot([i, i], [padded_yy[i]-padded_yy_std[i], padded_yy[i]+padded_yy_std[i]], color='gray', linewidth=3, alpha=0.7)
+        
         #ax.bar(padded_xx, padded_yy, yerr=padded_yy_std, alpha=0.5, label=label)
         #sns.barplot(x=range(1, len(xx)+1), y=xx, alpha=0.5, label='bayesian_hdx', ax=ax)
         
@@ -345,17 +351,19 @@ class Analysis:
         plt.xlabel('Resid')
         plt.ylabel('-log_kex')
         plt.xticks(rotation=90);
-        ax.set_ylim(0, 17)
+        ax.set_ylim(0, 18)
         ax.set_xlim(-3, self.results_obj.n_residues+3)
         
         
         #add the coverage heatmap
         #coverage = self.calculate_coverages()
         for i in range(len(self.coverage)):
-            color_intensity = self.coverage[i] / 20 # coverage.max()  # Normalizing the data for color intensity
+            color_intensity = self.coverage[i] / self.coverage.max() # coverage.max()  # Normalizing the data for color intensity
             rect = patches.Rectangle((i, 16), 1, height, color=plt.cm.Blues(color_intensity))
             ax.add_patch(rect)
             
+            #seq
+            ax.text(i+0.5, seq_pos, self.protein_sequence[i], ha='center', va='center', fontsize=22)
 
         return ax
     
@@ -365,7 +373,9 @@ class Analysis:
         all_peptides = [pep for state in self.protein_state for pep in state.peptides ]
         coverage = np.zeros(len(self.protein_state[0].hdxms_data.protein_sequence))
         for pep in all_peptides:
-            coverage[pep.start-1:pep.end] += 1
+            #coverage[pep.start-1:pep.end] += 1
+            num_tps = len([tp for tp in pep.timepoints if tp.deut_time != 0 and tp.deut_time != np.inf])
+            coverage[pep.start-1:pep.end] += num_tps
         return coverage
 
 
@@ -828,7 +838,7 @@ def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=F
 
     pep_start = peptide_obj.start
     pep_end = peptide_obj.end
-    time_points = sorted([tp.deut_time for tp in peptide_obj.timepoints if tp.deut_time > 0])
+    time_points = sorted([tp.deut_time for tp in peptide_obj.timepoints if tp.deut_time > 0 and tp.deut_time != np.inf])
     #deut_times = np.logspace(np.log10(time_points[0]), np.log10(time_points[-1]), 1000)
     
     fitted_uptakes = []

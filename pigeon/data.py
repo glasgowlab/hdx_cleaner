@@ -4,6 +4,7 @@ from scipy.optimize import curve_fit
 import itertools
 from tools import find_overlapped_peptides, subtract_peptides, exchange_fit, exchange_fit_low, fit_func, average_timepoints
 from tools import event_probabilities, calculate_simple_deuterium_incorporation
+from tools import pdb2seq, find_peptide
 import spectra
 from hdxrate import k_int_from_sequence
 import random
@@ -122,25 +123,6 @@ class HDXMSData:
 
 
     def reindex_peptide_from_pdb(self, pdb_file, first_residue_index=1):
-
-        def pdb2seq(pdb_file):
-
-            import warnings
-            from Bio import SeqIO
-            from Bio import BiopythonWarning
-
-            # Suppress all Biopython-specific warnings
-            with warnings.catch_warnings():
-                warnings.simplefilter('ignore', BiopythonWarning)
-                records = list(SeqIO.parse(pdb_file, 'pdb-atom'))
-                return str(records[0].seq)
-    
-        def find_peptide(seq, peptide):
-            start_index = seq.find(peptide)
-            if start_index == -1:
-                return (-1, -1)
-            end_index = start_index + len(peptide) - 1
-            return (start_index, end_index)
 
         pdb_sequence = pdb2seq(pdb_file)
         a_middle_pep = self.states[0].peptides[int(len(self.states[0].peptides)/2)]
