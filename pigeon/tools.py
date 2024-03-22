@@ -258,6 +258,9 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
 
     num_peaks = np.count_nonzero(p1>0.1)  #number of major peaks
     previous_loss = get_sum_ae(p1, p1_estimated)/num_peaks
+
+    if previous_loss < 0.05:
+        return (previous_loss, p3)
     
     best_models = []
     
@@ -267,7 +270,7 @@ def deconvolute_iso(p1, p2, p3, temperature=0.05, steps=2000, keep_best=True):
         for j in range(len(p3)):
             original_p3_j = p3[j]
             change = np.random.normal(0, 0.1)  # Generate change for the current peak
-            p3[j] += change
+            p3[j] *=  1 + change  # Apply the change
             p3[j] = max(p3[j], 1e-10)  # Prevent negative values
             
             p3 = normlize(p3)  # Normalize p3 after all individual changes

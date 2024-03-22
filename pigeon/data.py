@@ -689,48 +689,15 @@ class SimulatedData:
         self.incorporations = np.array(incorporations)
 
 
-
-    def _gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
-            """
-            Chunks a given sequence into peptides of random length.
-            :param sequence: The sequence to be chunked.
-            :param min_len: Minimum length of a chunk.
-            :param max_len: Maximum length of a chunk.
-            :param max_overlap: Maximum overlap between consecutive chunks.
-            :param num_peptides: The desired number of peptides.
-            :return: A list of chunked peptides.
-            """
-            chunks = []
-            sequence_length = len(self.sequence)
-            covered = [False] * sequence_length
-
-            while len(chunks) < num_peptides and not all(covered):
-                start = random.randint(0, sequence_length - 1)
-                end = min(start + random.randint(min_len, max_len), sequence_length)
-
-                # Check if the current chunk overlaps significantly with already covered parts
-                if not all(covered[start:end]):
-                    chunks.append(self.sequence[start:end])
-                    for i in range(start, end):
-                        covered[i] = True
-
-                # Introduce random overlaps
-                if max_overlap and end < sequence_length:
-                    overlap_end = min(end + random.randint(0, max_overlap), sequence_length)
-                    for i in range(end, overlap_end):
-                        covered[i] = False
-
-            self.peptides = [i for i in sorted(chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
-        
-
     def gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
 
         chunks = []
         avg_peptide_length = math.ceil(min_len + max_len) / 2
         sequence_length = len(self.sequence)    
          
-        avg_coverage = math.ceil(num_peptides/sequence_length)
+        avg_coverage = math.ceil(num_peptides/sequence_length)*5
 
+        blank_peptide_obj_list = [] #just for calculating overlapping peptides
         for i in range(sequence_length):
             count = 0
             while count < avg_coverage:
@@ -744,16 +711,33 @@ class SimulatedData:
                     continue
         
         covered = [False] * sequence_length
-        while not all(covered):
+        num_pairs = 0
+        while not (all(covered) and (num_peptides*0.9 < num_pairs < num_peptides * 1.0)):
             reduced_chunks = random.sample(chunks, k=num_peptides,)
             
+            # for similar overlapping peptides in the real data
+            N_overlap_groups = {}
+            C_overlap_groups = {}
             for pep in reduced_chunks:
                 start = self.sequence.find(pep)
                 end = start + len(pep)
                 for i in range(start, end):
                     covered[i] = True
-                    
-        print(len(reduced_chunks))
+                
+                if start in N_overlap_groups:
+                    N_overlap_groups[start].append(pep)
+                else:
+                    N_overlap_groups[start] = [pep]
+
+                if end in C_overlap_groups:
+                    C_overlap_groups[end].append(pep)
+                else:
+                    C_overlap_groups[end] = [pep]
+            
+            combined_overlap_groups = {**N_overlap_groups, **C_overlap_groups}
+
+            all_pairs = [i for k,v in combined_overlap_groups.items() for i in itertools.combinations(v, 2) if i[0] != i[1]]
+            num_pairs = len(set(all_pairs))
 
         self.peptides = [i for i in sorted(reduced_chunks, key=lambda x: self.sequence.find(x)) if len(i) > 3]
 

@@ -867,7 +867,7 @@ def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=F
     fitted_uptakes = np.array(fitted_uptakes)*full_d_scaler
 
     exp_uptakes = np.array([peptide_obj.get_timepoint(tp).num_d for tp in time_points])
-    rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes))
+    rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes)) / (pep_end - pep_start + 1)
 
     if if_plot:
         uptake = UptakePlot(hdxms_data_list,  peptide_obj.identifier, states_subset=[state_name], if_plot_fit=False)
