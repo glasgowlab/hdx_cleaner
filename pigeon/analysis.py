@@ -294,7 +294,7 @@ class Analysis:
 
             if num_Ps > 0:
 
-                return np.append([0]*num_Ps,k_cluster.cluster_centers_.flatten()[sorted_indices]), np.append([0]*num_Ps,std_within_cluster[sorted_indices])
+                return np.append([np.inf]*num_Ps,k_cluster.cluster_centers_.flatten()[sorted_indices]), np.append([0]*num_Ps,std_within_cluster[sorted_indices])
 
             else:
                 return k_cluster.cluster_centers_.flatten()[sorted_indices], std_within_cluster[sorted_indices]
