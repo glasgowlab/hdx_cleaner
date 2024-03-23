@@ -816,7 +816,10 @@ class Bayesian_hdx_ParseOutputFile(object):
 def remove_outliers(data):
 
     # Convert input to numpy array in case it's a list or other array-like object
-    data = np.array(data)
+    if len(set(~np.isnan(data))) == 2: #if a mix of nan and non-nan due the pep drops
+        data = np.array(data[~np.isnan(data)])
+    else:
+        data = np.array(data)
 
     # Remove all zeros, bc PFs can't be zero
     #data = data[data != 1e-3]
