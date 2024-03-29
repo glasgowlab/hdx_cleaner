@@ -695,24 +695,24 @@ class SimulatedData:
         avg_peptide_length = math.ceil(min_len + max_len) / 2
         sequence_length = len(self.sequence)    
          
-        avg_coverage = math.ceil(num_peptides/sequence_length)*5
+        avg_coverage = math.ceil(num_peptides/sequence_length)*3
 
         blank_peptide_obj_list = [] #just for calculating overlapping peptides
         for i in range(sequence_length):
             count = 0
             while count < avg_coverage:
                 start = max(0, random.randint(int(i-avg_peptide_length-2), i)) # n_fastamides = 2
-                end = min(random.randint(i, int(i+avg_peptide_length)), sequence_length)
-                pep_len = len([i for i in self.sequence[start:end] if i != 'P'])
-                if pep_len > 3:
-                    chunks.append(self.sequence[start:end])
-                    count += 1
-                else:
-                    continue
+                for _ in range(3):
+                    end = min(random.randint(i, int(i+avg_peptide_length)), sequence_length)
+                    pep_len = len([i for i in self.sequence[start:end] if i != 'P'])
+                    if pep_len > 3:
+                        chunks.append(self.sequence[start:end])
+                count += 1
+
         
         covered = [False] * sequence_length
         num_pairs = 0
-        while not (all(covered) and (num_peptides*0.9 < num_pairs < num_peptides * 1.0)):
+        while not (all(covered) and (num_peptides*0.7 < num_pairs < num_peptides * 1.0)):
             reduced_chunks = random.sample(chunks, k=num_peptides,)
             
             # for similar overlapping peptides in the real data

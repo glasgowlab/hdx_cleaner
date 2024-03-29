@@ -253,7 +253,7 @@ class Analysis:
         for res in results.residues:
             if hasattr(res, 'mini_pep'):
                 res.clustering_results_logP = np.array([res.log_k_init + i for i in res.mini_pep.clustering_results_log_kex]) # log_kex is negative
-                res.std_within_clusters_logP = mini_pep.std_within_clusters_log_kex
+                res.std_within_clusters_logP = res.mini_pep.std_within_clusters_log_kex
 
 
 
