@@ -598,11 +598,6 @@ class Bayesian_hdx_ParseOutputFile(object):
             self.generate_datasets()
         return self.datasets
 
-    def generate_datasets(self):
-        self.datasets=[]
-        for f in self.datafiles:
-            #print(self.path, f)
-            self.datasets.append(hxio.import_json(self.path+f[0]))
 
     def get_models(self, return_pf=False):
         # returns all models stored in the POF (not the data file)
