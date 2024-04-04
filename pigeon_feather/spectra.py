@@ -2,7 +2,7 @@
    funcs for refine spectra
 
 """
-import tools
+from pigeon_feather import tools
 import itertools
 import numpy as np
 import pandas as pd

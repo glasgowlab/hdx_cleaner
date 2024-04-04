@@ -8,8 +8,8 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.cluster import KMeans
 from hdxrate import k_int_from_sequence
-from tools import calculate_simple_deuterium_incorporation, event_probabilities, get_sum_ae
-from plot import UptakePlot
+from pigeon_feather.tools import calculate_simple_deuterium_incorporation, event_probabilities, get_sum_ae
+from pigeon_feather.plot import UptakePlot
 from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error
 
