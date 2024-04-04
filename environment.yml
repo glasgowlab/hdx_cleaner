@@ -221,3 +221,4 @@ dependencies:
       - tqdm==4.66.2
       - zipp==3.18.1
       - scikit-learn==1.4.1.post1
+      - biopython==1.83 
