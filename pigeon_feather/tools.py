@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+import os
 
 
 def refine_data(hdxms_data_list, std_threshold=1.0):
@@ -631,15 +631,17 @@ def generate_bayesian_hdx_script(
     :return: A string containing the generated script.
     """
     # Read the template from the file
+    pigeon_feather_path = os.path.dirname(os.path.abspath(__file__))
+    
     if making_chunks:
-        with open("../../lib/run_bayesian_hdx_template_chunks.txt", "r") as file:
+        with open(f"{pigeon_feather_path}/lib/run_bayesian_hdx_template_chunks.txt", "r") as file:
             script_template = file.read()
     else:
         if if_original_bayesian_hdx:
-            with open("../../lib/run_original_bayesian_hdx_template.txt", "r") as file:
+            with open(f"{pigeon_feather_path}/lib/run_original_bayesian_hdx_template.txt", "r") as file:
                 script_template = file.read()
         else:
-            with open("../../lib/run_bayesian_hdx_template.txt", "r") as file:
+            with open(f"{pigeon_feather_path}lib/run_bayesian_hdx_template.txt", "r") as file:
                 script_template = file.read()
 
     # Generate the script using the template
