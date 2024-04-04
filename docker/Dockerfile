@@ -5,7 +5,7 @@ RUN cd /app/PIGEON_FEATHER && pip install .
 RUN cd /app/ && git clone https://github.com/lucl13/bayesian_hdx.git 
 
 RUN pip install --index-url https://pypi.cs.uni-tuebingen.de/simple/ pyopenms
-RUN pip install HDXrate, biopython
+RUN pip install HDXrate biopython
 RUN conda install conda-forge::pymol-open-source
 
 # install fonts
