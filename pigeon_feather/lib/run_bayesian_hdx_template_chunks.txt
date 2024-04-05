@@ -14,7 +14,7 @@ import random
 
 
 # Define function to run simulation
-def run_simulation(single_dataset, state_name, outputdir, run_index=1):
+def run_simulation(single_dataset, sequence, state_name, outputdir, run_index=1):
     
     tools.refine_dataset(single_dataset)
 
@@ -51,56 +51,62 @@ def run_simulation(single_dataset, state_name, outputdir, run_index=1):
         sampler.run(nsteps, 2, write=True, find_temperature=False)
         sampler.run(500, 0.1, write=True, find_temperature=False)
 
+def main():
+    # Define protein state and sequence
+    protein_state = '{protein_state}'
+    sequence = "{sequence}"
 
-# Define protein state and sequence
-protein_state = '{protein_state}'
-sequence = "{sequence}"
+    # Define experiment names and input file paths
+    exp_names = {exp_names}
+    infile_list = [f"{base_directory}/bayesian_hdx_{{exp}}_{{protein_state}}.dat" for exp in exp_names]
 
-# Define experiment names and input file paths
-exp_names = {exp_names}
-infile_list = [f"{base_directory}/bayesian_hdx_{{exp}}_{{protein_state}}.dat" for exp in exp_names]
+    # conditions
+    conditions = data.Conditions(temperature=293., pH=7.0, saturation=1.0)
 
-# conditions
-conditions = data.Conditions(temperature=293., pH=7.0, saturation=1.0)
+    # Process datasets
+    dataset_list = []
+    for i, infile in enumerate(infile_list):
+        dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=conditions, error_estimate=0.5, n_fastamides=2, offset=0)
+        raw_spectra_path = f"{base_directory}/spectra_{{exp_names[i]}}/"
+        hxio.load_raw_ms_from_pegion(dataset, raw_spectra_path)
+        dataset_list.append(dataset)
 
-# Process datasets
-dataset_list = []
-for i, infile in enumerate(infile_list):
-    dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=conditions, error_estimate=0.5, n_fastamides=2, offset=0)
-    raw_spectra_path = f"{base_directory}/spectra_{{exp_names[i]}}/"
-    hxio.load_raw_ms_from_pegion(dataset, raw_spectra_path)
-    dataset_list.append(dataset)
+    # Merge datasets
+    merged_dataset = data.merge_mutiple_datasets(dataset_list)
+    tools.refine_dataset(merged_dataset)
 
-# Merge datasets
-merged_dataset = data.merge_mutiple_datasets(dataset_list)
-tools.refine_dataset(merged_dataset)
+    # Initialize model and system
+    state_name = f"{protein_state}"
+    outputdir = f"{base_directory}/bayesian_hdx_output_chunks"
 
-# Initialize model and system
-state_name = f"{protein_state}"
-outputdir = f"{base_directory}/bayesian_hdx_output_chunks"
+    tasks_all = []
+    for run_index in range(1,4):
+        merged_dataset_90 = deepcopy(merged_dataset)
+        merged_dataset_90.peptides = random.sample(merged_dataset.peptides, int(0.9*len(merged_dataset.peptides)))
+        
+        # Split dataset into chunks
+        range_chunks, chunked_datasets = data.spilt_dataset_into_chunks(merged_dataset_90, chunk_size=100)
 
-tasks_all = []
-for run_index in range(1,4):
-    merged_dataset_90 = deepcopy(merged_dataset)
-    merged_dataset_90.peptides = random.sample(merged_dataset.peptides, int(0.9*len(merged_dataset.peptides)))
+        # Prepare a list of arguments for each task
+        tasks = [(chunked_datasets[i], sequence, f'{{state_name}}_chunk_{{i}}', outputdir, run_index) for i in range(len(chunked_datasets))]
+        tasks_all.append(tasks)
+        
+
+    tasks_all = [item for sublist in tasks_all for item in sublist]
+
+    # Run tasks in parallel
+    pool = multiprocessing.Pool(processes=len(tasks_all))
+
+
+    # Run tasks
+    pool.starmap(run_simulation, tasks_all)
+
+    # Close the pool and wait for all tasks to complete
+    pool.close()
+    pool.join()
+
+
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    main()
     
-    # Split dataset into chunks
-    range_chunks, chunked_datasets = data.spilt_dataset_into_chunks(merged_dataset_90, chunk_size=100)
-
-    # Prepare a list of arguments for each task
-    tasks = [(chunked_datasets[i], f'{{state_name}}_chunk_{{i}}', outputdir, run_index) for i in range(len(chunked_datasets))]
-    tasks_all.append(tasks)
-    
-
-tasks_all = [item for sublist in tasks_all for item in sublist]
-
-# Run tasks in parallel
-pool = multiprocessing.Pool(processes=len(tasks_all))
-
-
-# Run tasks
-pool.starmap(run_simulation, tasks_all)
-
-# Close the pool and wait for all tasks to complete
-pool.close()
-pool.join()
