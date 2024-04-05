@@ -20,10 +20,10 @@ Conda
     pip install pyopenms hdxrate
 
     # clone the PIGEON-FEATHER repo
-    git clone git@github.com:glasgowlab/PIGEON.git
+    git clone https://github.com/glasgowlab/PIGEON-FEATHER.git
 
     # clone the bayesian hdx iso repo
-    git clone git@github.com:lucl13/bayesian_hdx.git
+    git clone https://github.com/lucl13/bayesian_hdx.git
 
     cd PIGEON_FEATHER
     pip install .
