@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="Python" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PIGEON usage &mdash; pigeon_feather 0.9 documentation</title>
+  <title>PIGEON &mdash; pigeon_feather 0.9 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
 
   
   <!--[if lt IE 9]>
@@ -18,9 +19,14 @@
         <script src="_static/documentation_options.js?v=c4af95dd"></script>
         <script src="_static/doctools.js?v=888ff710"></script>
         <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="_static/copybutton.js?v=f281be69"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
-    <link rel="search" title="Search" href="search.html" /> 
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="FEATHER" href="feather.html" />
+    <link rel="prev" title="Documentation" href="documentation.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -42,13 +48,18 @@
   </form>
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
-              <ul>
+              <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="documentation.html">Documentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Load the data</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html#back-exchange-correction">Back exchange correction</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html#peptide-level-analysis">Peptide level analysis</a></li>
-<li class="toctree-l1"><a class="reference internal" href="tutorial.html#calculate-the-pfs">Calculate the PFs</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="documentation.html">Documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">PIGEON</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#cmd-options">CMD Options</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#example-usage">Example Usage</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="feather.html">FEATHER</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorials</a></li>
 </ul>
 
         </div>
@@ -65,9 +76,10 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">PIGEON usage</li>
+          <li class="breadcrumb-item"><a href="documentation.html">Documentation</a></li>
+      <li class="breadcrumb-item active">PIGEON</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/PIGEON.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/pigeon.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -75,55 +87,86 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="pigeon-usage">
-<h1>PIGEON usage<a class="headerlink" href="#pigeon-usage" title="Link to this heading"></a></h1>
-<p>Command line inputs (optional unless specified):</p>
-<p>--t, --table: Path(s) to input csv. Required
---b, --batch:
---o, --out: path to output csv. Default: 'CLEAN.csv'
---p, --plots: directory for output plots. Default: './csvplots'
---ov, --overlap: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'
---r, --rangeslist: path to output rangeslist, if any.
---RTC: RT cutoff for duplicate peptides. Default: 0.5
---MZC: m/z cutoff for duplicate peptides. Default: 0.1
---scoreC: Score threshold for provisional cut for trendline fit. Default: 150
---ppmC: m/z deviation cutoff (in ppm) for cut about trendline. Default: 7
---maxfev: maxfev for curve_fit for trendline.</p>
-<p>Default inputs:</p>
-<p>--t (list of peptide pool csvs)
---b (table for batched data. Each row contains 'name' string for protein, then all pool csvs corresponding to that pool)</p>
-<p>Default outputs:</p>
-<p>--o (batched and cleaned peptide pool csv): CLEAN.csv
---r (rangeslist table for merge in post-PIGEON)
-in --plots:
-score histograms:
-/hist-scores-all.png: histogram of score for all pooled data
-/hist-scores-cut.png histogram of score for high scoring data used for curve fit
-/hist-scores-ppm.png histogram of score after cut at ppmC from trendline
-/hist-scores-topscores.png histogram of score after dropping all but best match for each charge state
-/hist-scores-flagged.png histogram of score for non-overlapping duplicates
-/hist-scores-yellow.png histogram of score for overlapping duplicates
-/hist-scores-clean.png histogram of score for final cleaned data
-scatterplots -- ppm m/z deviation vs m/z measured, colorbar Score:	
-/scatter-30ppm.png: all data before cuts
-/scatter-hscoring.png: high scoring data used for curve fit
-/scatter-7ppm.png: all data after cut at ppmC from trendline
-/scatter-topscore.png: data after dropping all but best match for each charge state
-/scatter-flagged.png: data dropped for being duplicates, non-overlapping
-/scatter-yellow.png: data dropped for being duplicates, overlapping
-/scatter-clean.png: final cleaned data
-ppm histogram -- hist of abs(distance from trendline) for all data, showing location of cut
-/hist-ppms.png</p>
-<p>Example input: python biotools-cleaner.py --t pool-1.csv pool-2.csv pool-3.csv --p csvplots --ov keep --o keep-pooled.csv --r rangeslist.csv --MZC 0.05 --RTC 0.25 --scoreC 200 --ppmC 5 --maxfev 2000
-Alternative input: python biotools-cleaner.py --b batch-list.txt --p csvplots --ov select --o select-pooled.csv</p>
-<p>Form of fit function is an inverse function, with asymptote &lt;= min(all m/z in data) - 100D/e. This is heuristic, based on experience with our mass spectrometer. Users should use any fit function that well describes their calibration error.</p>
-<p>Format for input/output csv:</p>
+  <section id="pigeon">
+<h1>PIGEON<a class="headerlink" href="#pigeon" title="Link to this heading"></a></h1>
+<p><strong>pigeon</strong> is a stand-only program that takes in a list of peptide pool csv
+and outputs a cleaned csv of pooled data. It also outputs a rangeslist table for merge in FEATHER.</p>
+<section id="cmd-options">
+<h2>CMD Options<a class="headerlink" href="#cmd-options" title="Link to this heading"></a></h2>
+<p>Type <code class="docutils literal notranslate"><span class="pre">pigeon</span> <span class="pre">--help</span></code> to see the following options:</p>
+<div class="line-block">
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--t</span></code>, <code class="docutils literal notranslate"><span class="pre">--table</span></code>: Path(s) to input csv. Required</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--b</span></code>, <code class="docutils literal notranslate"><span class="pre">--batch</span></code>:</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code>, <code class="docutils literal notranslate"><span class="pre">--out</span></code>: path to output csv. Default: 'CLEAN.csv'</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--p</span></code>, <code class="docutils literal notranslate"><span class="pre">--plots</span></code>: directory for output plots. Default: './csvplots'</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--ov</span></code>, <code class="docutils literal notranslate"><span class="pre">--overlap</span></code>: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--r</span></code>, <code class="docutils literal notranslate"><span class="pre">--rangeslist</span></code>: path to output rangeslist, if any.</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--RTC</span></code>: RT cutoff for duplicate peptides. Default: 0.5</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--MZC</span></code>: m/z cutoff for duplicate peptides. Default: 0.1</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--scoreC</span></code>: Score threshold for provisional cut for trendline fit. Default: 150</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--ppmC</span></code>: m/z deviation cutoff (in ppm) for cut about trendline. Default: 7</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--maxfev</span></code>: maxfev for curve_fit for trendline.</div>
+</div>
+<p>Default inputs</p>
+<div class="line-block">
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--t</span></code> (list of peptide pool csvs)</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--b</span></code> (table for batched data. Each row contains 'name' string for protein, then all pool csvs corresponding to that pool)</div>
+</div>
+<p>Default outputs</p>
+<div class="line-block">
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code> (batched and cleaned peptide pool csv): <code class="docutils literal notranslate"><span class="pre">CLEAN.csv</span></code></div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--r</span></code> (rangeslist table for merge in post-PIGEON)</div>
+</div>
+<p>In the plot directory, the following files are generated:</p>
+<p>score histograms:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line"><cite>hist-scores-all.png</cite>: Histogram of score for all pooled data.</div>
+<div class="line"><cite>hist-scores-cut.png</cite>: Histogram of score for high scoring data used for curve fit.</div>
+<div class="line"><cite>hist-scores-ppm.png</cite>: Histogram of score after cut at ppmC from trendline.</div>
+<div class="line"><cite>hist-scores-topscores.png</cite>: Histogram of score after dropping all but best match for each charge state.</div>
+<div class="line"><cite>hist-scores-flagged.png</cite>: Histogram of score for non-overlapping duplicates.</div>
+<div class="line"><cite>hist-scores-yellow.png</cite>: Histogram of score for overlapping duplicates.</div>
+<div class="line"><cite>hist-scores-clean.png</cite>: Histogram of score for final cleaned data.</div>
+</div>
+</div></blockquote>
+<p>scatterplots:</p>
+<blockquote>
+<div><div class="line-block">
+<div class="line"><cite>scatter-30ppm.png</cite>: All data before cuts, ppm m/z deviation vs m/z measured, colorbar Score.</div>
+<div class="line"><cite>scatter-hscoring.png</cite>: High scoring data used for curve fit.</div>
+<div class="line"><cite>scatter-7ppm.png</cite>: All data after cut at ppmC from trendline.</div>
+<div class="line"><cite>scatter-topscore.png</cite>: Data after dropping all but best match for each charge state.</div>
+<div class="line"><cite>scatter-flagged.png</cite>: Data dropped for being duplicates, non-overlapping.</div>
+<div class="line"><cite>scatter-yellow.png</cite>: Data dropped for being duplicates, overlapping.</div>
+<div class="line"><cite>scatter-clean.png</cite>: Final cleaned data.</div>
+</div>
+</div></blockquote>
+<p>ppm histogram:</p>
+<blockquote>
+<div><p><cite>hist-ppms.png</cite>: Histogram of abs(distance from trendline) for all data, showing location of cut.</p>
+</div></blockquote>
+</section>
+<section id="example-usage">
+<h2>Example Usage<a class="headerlink" href="#example-usage" title="Link to this heading"></a></h2>
+<p>Below are examples of how to use the <code class="docutils literal notranslate"><span class="pre">pigeon</span></code> program with various arguments:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pigeon<span class="w"> </span>--t<span class="w"> </span>pool-1.csv<span class="w"> </span>pool-2.csv<span class="w"> </span>pool-3.csv<span class="w"> </span>--p<span class="w"> </span>csvplots<span class="w"> </span>--ov<span class="w"> </span>keep<span class="w"> </span>--o<span class="w"> </span>keep-pooled.csv<span class="w"> </span>--r<span class="w"> </span>rangeslist.csv<span class="w"> </span>--MZC<span class="w"> </span><span class="m">0</span>.05<span class="w"> </span>--RTC<span class="w"> </span><span class="m">0</span>.25<span class="w"> </span>--scoreC<span class="w"> </span><span class="m">200</span><span class="w"> </span>--ppmC<span class="w"> </span><span class="m">5</span><span class="w"> </span>--maxfev<span class="w"> </span><span class="m">2000</span>
+</pre></div>
+</div>
+<p>Alternative usage example:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pigeon<span class="w"> </span>biotools-cleaner.py<span class="w"> </span>--b<span class="w"> </span>batch-list.txt<span class="w"> </span>--p<span class="w"> </span>csvplots<span class="w"> </span>--ov<span class="w"> </span><span class="k">select</span><span class="w"> </span>--o<span class="w"> </span><span class="k">select</span>-pooled.csv
+</pre></div>
+</div>
+</section>
 </section>
 
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="documentation.html" class="btn btn-neutral float-left" title="Documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="feather.html" class="btn btn-neutral float-right" title="FEATHER" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

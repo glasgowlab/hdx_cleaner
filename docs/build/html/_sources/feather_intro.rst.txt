@@ -1,0 +1,11 @@
+FEATHER_introduction
+====================
+
+Why we need high resolution PFs
+-------------------------------
+
+The high resolution PFs are needed for the following reasons:
+- Proection factors (PFs) are equilibrium constant 
+of the local unfold process of protein backbonea amides.
+- PFs is a way to define FEL
+

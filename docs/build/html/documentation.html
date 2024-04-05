@@ -7,6 +7,7 @@
   <title>Documentation &mdash; pigeon_feather 0.9 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
 
   
   <!--[if lt IE 9]>
@@ -18,11 +19,13 @@
         <script src="_static/documentation_options.js?v=c4af95dd"></script>
         <script src="_static/doctools.js?v=888ff710"></script>
         <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="_static/copybutton.js?v=f281be69"></script>
         <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Tutorials" href="tutorial.html" />
+    <link rel="next" title="HDX/MS" href="hdx.html" />
     <link rel="prev" title="Installation" href="installation.html" /> 
 </head>
 
@@ -48,15 +51,9 @@
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Documentation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#pigeon">PIGEON</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#command-line-inputs-optional-unless-specified">Command line inputs (optional unless specified)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#default-inputs">Default inputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#default-outputs">Default outputs</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#example-input">Example input</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#format-for-input-output-csv">Format for input/output csv</a></li>
-</ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="#feather">FEATHER</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hdx.html">HDX/MS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pigeon.html">PIGEON</a></li>
+<li class="toctree-l2"><a class="reference internal" href="feather.html">FEATHER</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="tutorial.html">Tutorials</a></li>
@@ -88,74 +85,13 @@
              
   <section id="documentation">
 <h1>Documentation<a class="headerlink" href="#documentation" title="Link to this heading"></a></h1>
-<section id="pigeon">
-<h2>PIGEON<a class="headerlink" href="#pigeon" title="Link to this heading"></a></h2>
-<section id="command-line-inputs-optional-unless-specified">
-<h3>Command line inputs (optional unless specified)<a class="headerlink" href="#command-line-inputs-optional-unless-specified" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--t</span></code>, <code class="docutils literal notranslate"><span class="pre">--table</span></code>: Path(s) to input csv. Required</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--b</span></code>, <code class="docutils literal notranslate"><span class="pre">--batch</span></code>:</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--o</span></code>, <code class="docutils literal notranslate"><span class="pre">--out</span></code>: path to output csv. Default: 'CLEAN.csv'</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--p</span></code>, <code class="docutils literal notranslate"><span class="pre">--plots</span></code>: directory for output plots. Default: './csvplots'</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--ov</span></code>, <code class="docutils literal notranslate"><span class="pre">--overlap</span></code>: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--r</span></code>, <code class="docutils literal notranslate"><span class="pre">--rangeslist</span></code>: path to output rangeslist, if any.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--RTC</span></code>: RT cutoff for duplicate peptides. Default: 0.5</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--MZC</span></code>: m/z cutoff for duplicate peptides. Default: 0.1</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--scoreC</span></code>: Score threshold for provisional cut for trendline fit. Default: 150</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--ppmC</span></code>: m/z deviation cutoff (in ppm) for cut about trendline. Default: 7</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--maxfev</span></code>: maxfev for curve_fit for trendline.</p></li>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="hdx.html">HDX/MS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="pigeon.html">PIGEON</a></li>
+<li class="toctree-l1"><a class="reference internal" href="feather.html">FEATHER</a></li>
 </ul>
-</section>
-<section id="default-inputs">
-<h3>Default inputs<a class="headerlink" href="#default-inputs" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--t</span></code> (list of peptide pool csvs)</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--b</span></code> (table for batched data. Each row contains 'name' string for protein, then all pool csvs corresponding to that pool)</p></li>
-</ul>
-</section>
-<section id="default-outputs">
-<h3>Default outputs<a class="headerlink" href="#default-outputs" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--o</span></code> (batched and cleaned peptide pool csv): CLEAN.csv</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--r</span></code> (rangeslist table for merge in post-PIGEON)</p></li>
-<li><p>in <code class="docutils literal notranslate"><span class="pre">--plots</span></code>:</p></li>
-<li><p>score histograms:
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-all.png</span></code>: histogram of score for all pooled data
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-cut.png</span></code>: histogram of score for high scoring data used for curve fit
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-ppm.png</span></code>: histogram of score after cut at ppmC from trendline
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-topscores.png</span></code>: histogram of score after dropping all but best match for each charge state
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-flagged.png</span></code>: histogram of score for non-overlapping duplicates
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-yellow.png</span></code>: histogram of score for overlapping duplicates
-- <code class="docutils literal notranslate"><span class="pre">/hist-scores-clean.png</span></code>: histogram of score for final cleaned data
-- scatterplots
-- -- ppm m/z deviation vs m/z measured, colorbar Score:
-- <code class="docutils literal notranslate"><span class="pre">/scatter-30ppm.png</span></code>: all data before cuts
-- <code class="docutils literal notranslate"><span class="pre">/scatter-hscoring.png</span></code>: high scoring data used for curve fit
-- <code class="docutils literal notranslate"><span class="pre">/scatter-7ppm.png</span></code>: all data after cut at ppmC from trendline
-- <code class="docutils literal notranslate"><span class="pre">/scatter-topscore.png</span></code>: data after dropping all but best match for each charge state
-- <code class="docutils literal notranslate"><span class="pre">/scatter-flagged.png</span></code>: data dropped for being duplicates, non-overlapping
-- <code class="docutils literal notranslate"><span class="pre">/scatter-yellow.png</span></code>: data dropped for being duplicates, overlapping
-- <code class="docutils literal notranslate"><span class="pre">/scatter-clean.png</span></code>: final cleaned data
-- ppm histogram
-- -- hist of abs(distance from trendline) for all data, showing location of cut
-- <code class="docutils literal notranslate"><span class="pre">/hist-ppms.png</span></code></p></li>
-</ul>
-</section>
-<section id="example-input">
-<h3>Example input<a class="headerlink" href="#example-input" title="Link to this heading"></a></h3>
-<ul class="simple">
-<li><p>python biotools-cleaner.py --t pool-1.csv pool-2.csv pool-3.csv --p csvplots --ov keep --o keep-pooled.csv --r rangeslist.csv --MZC 0.05 --RTC 0.25 --scoreC 200 --ppmC 5 --maxfev 2000</p></li>
-<li><p>Alternative input: python biotools-cleaner.py --b batch-list.txt --p csvplots --ov select --o select-pooled.csv</p></li>
-</ul>
-<p>Form of fit function is an inverse function, with asymptote &lt;= min(all m/z in data) - 100D/e. This is heuristic, based on experience with our mass spectrometer. Users should use any fit function that well describes their calibration error.</p>
-</section>
-<section id="format-for-input-output-csv">
-<h3>Format for input/output csv<a class="headerlink" href="#format-for-input-output-csv" title="Link to this heading"></a></h3>
-</section>
-</section>
-<section id="feather">
-<h2>FEATHER<a class="headerlink" href="#feather" title="Link to this heading"></a></h2>
-</section>
+</div>
 </section>
 
 
@@ -163,7 +99,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="tutorial.html" class="btn btn-neutral float-right" title="Tutorials" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="hdx.html" class="btn btn-neutral float-right" title="HDX/MS" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

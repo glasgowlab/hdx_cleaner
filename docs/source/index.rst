@@ -1,8 +1,10 @@
 
-==========================================
-Welcome to pigeon_feather's documentation!
-==========================================
+===========================================
+Welcome to  PIGEON-FEATHER's documentation!
+===========================================
 
+**PIGEON** is an acronym for *Peptide ID Generation for Exchange of Nuclei*, while
+**FEATHER** represents *Finding Epitopes for Allostery Through Hydrogen Exchange Rates*.
 PIGEON-FEATHER is a Python package for the analysis of HDX-MS data. 
 Current features include:
 
