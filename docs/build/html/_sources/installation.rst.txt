@@ -6,17 +6,28 @@ Conda
 
 .. code-block:: bash
 
-    # clone the PIGEON repo
+    # install mamba
+    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-$(uname)-$(uname -m).sh"
+    bash Mambaforge-$(uname)-$(uname -m).sh 
+
+    # create a conda environment and install the required packages
+    conda create --name pigeon_feather python=3.11
+    conda activate pigeon_feather
+
+    conda install jupyterlab mdanalysis numba
+    conda install pymol-open-source
+
+    pip install pyopenms hdxrate
+
+    # clone the PIGEON-FEATHER repo
     git clone git@github.com:glasgowlab/PIGEON.git
 
     # clone the bayesian hdx iso repo
     git clone git@github.com:lucl13/bayesian_hdx.git
 
-    # install the dependencies
-    conda install numpy pandas numba
-    conda install conda-forge::seaborn
-    conda install conda-forge::mdanalysis
-    pip install --index-url https://pypi.cs.uni-tuebingen.de/simple/ pyopenms
+    cd PIGEON_FEATHER
+    pip install .
+
 
 
 Docker
@@ -24,11 +35,15 @@ Docker
 
 .. code-block:: bash
 
-    docker build -f docker/Dockerfile -t pigeon:latest .
-    docker run -p 8888:8888 -v $(pwd):/home/jovyan/work --rm pigeon
+    docker build -f docker/Dockerfile -t pigeon_feather:0.9 .
+    docker run -it -v $(pwd):/work -p 8889:8889 --rm pigeon_feather:0.9 jupyter-lab --port 8889
 
-Click the link in the terminal to open the jupyter notebook, cd to ``example/docker_example``, click and run.
+To open the Jupyter notebook, please click the link displayed in the terminal. 
+For users operating on Apple Silicon machines, it may be necessary to append 
+`--platform amd64` when building the image, as `pyopenms` is not supported on 
+the linux/arm64 architecture. It is advisable to avoid running the Docker container 
+on Apple Silicon machines due to the significant performance degradation 
+caused by the emulation of the x86_64 architecture.
 
-.. note::
-
-    bayesian_hdx at the above link is a fork of the original repo at https://github.com/salilab/bayesian_hdx with some modifications to the code to make it compatible with the PIGEON workflow and support for the isotopic envelope fitting.
+Note: ``bayesian_hdx`` at the above link is a fork of the `original repo <https://github.com/salilab/bayesian_hdx>`_ , 
+which has been modified for compatibility with the PIGEON-FEATHER workflow and support for isotopic envelope fitting.

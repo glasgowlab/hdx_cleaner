@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html class="writer-html5" lang="Python" data-content_root="./">
 <head>
-  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Installation &mdash; pigeon_feather 0.9 documentation</title>
@@ -18,6 +18,7 @@
         <script src="_static/documentation_options.js?v=c4af95dd"></script>
         <script src="_static/doctools.js?v=888ff710"></script>
         <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -82,31 +83,44 @@
 <h1>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h1>
 <section id="conda">
 <h2>Conda<a class="headerlink" href="#conda" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># clone the PIGEON repo</span>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># install mamba</span>
+wget<span class="w"> </span><span class="s2">&quot;https://github.com/conda-forge/miniforge/releases/latest/download/Mambaforge-</span><span class="k">$(</span>uname<span class="k">)</span><span class="s2">-</span><span class="k">$(</span>uname<span class="w"> </span>-m<span class="k">)</span><span class="s2">.sh&quot;</span>
+bash<span class="w"> </span>Mambaforge-<span class="k">$(</span>uname<span class="k">)</span>-<span class="k">$(</span>uname<span class="w"> </span>-m<span class="k">)</span>.sh
+
+<span class="c1"># create a conda environment and install the required packages</span>
+conda<span class="w"> </span>create<span class="w"> </span>--name<span class="w"> </span>pigeon_feather<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.11
+conda<span class="w"> </span>activate<span class="w"> </span>pigeon_feather
+
+conda<span class="w"> </span>install<span class="w"> </span>jupyterlab<span class="w"> </span>mdanalysis<span class="w"> </span>numba
+conda<span class="w"> </span>install<span class="w"> </span>pymol-open-source
+
+pip<span class="w"> </span>install<span class="w"> </span>pyopenms<span class="w"> </span>hdxrate
+
+<span class="c1"># clone the PIGEON-FEATHER repo</span>
 git<span class="w"> </span>clone<span class="w"> </span>git@github.com:glasgowlab/PIGEON.git
 
 <span class="c1"># clone the bayesian hdx iso repo</span>
 git<span class="w"> </span>clone<span class="w"> </span>git@github.com:lucl13/bayesian_hdx.git
 
-<span class="c1"># install the dependencies</span>
-conda<span class="w"> </span>install<span class="w"> </span>numpy<span class="w"> </span>pandas<span class="w"> </span>numba
-conda<span class="w"> </span>install<span class="w"> </span>conda-forge::seaborn
-conda<span class="w"> </span>install<span class="w"> </span>conda-forge::mdanalysis
-pip<span class="w"> </span>install<span class="w"> </span>--index-url<span class="w"> </span>https://pypi.cs.uni-tuebingen.de/simple/<span class="w"> </span>pyopenms
+<span class="nb">cd</span><span class="w"> </span>PIGEON_FEATHER
+pip<span class="w"> </span>install<span class="w"> </span>.
 </pre></div>
 </div>
 </section>
 <section id="docker">
 <h2>Docker<a class="headerlink" href="#docker" title="Link to this heading"></a></h2>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>docker/Dockerfile<span class="w"> </span>-t<span class="w"> </span>pigeon:latest<span class="w"> </span>.
-docker<span class="w"> </span>run<span class="w"> </span>-p<span class="w"> </span><span class="m">8888</span>:8888<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/home/jovyan/work<span class="w"> </span>--rm<span class="w"> </span>pigeon
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>build<span class="w"> </span>-f<span class="w"> </span>docker/Dockerfile<span class="w"> </span>-t<span class="w"> </span>pigeon_feather:0.9<span class="w"> </span>.
+docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>-v<span class="w"> </span><span class="k">$(</span><span class="nb">pwd</span><span class="k">)</span>:/work<span class="w"> </span>-p<span class="w"> </span><span class="m">8889</span>:8889<span class="w"> </span>--rm<span class="w"> </span>pigeon_feather:0.9<span class="w"> </span>jupyter-lab<span class="w"> </span>--port<span class="w"> </span><span class="m">8889</span>
 </pre></div>
 </div>
-<p>Click the link in the terminal to open the jupyter notebook, cd to <code class="docutils literal notranslate"><span class="pre">example/docker_example</span></code>, click and run.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>bayesian_hdx at the above link is a fork of the original repo at <a class="reference external" href="https://github.com/salilab/bayesian_hdx">https://github.com/salilab/bayesian_hdx</a> with some modifications to the code to make it compatible with the PIGEON workflow and support for the isotopic envelope fitting.</p>
-</div>
+<p>To open the Jupyter notebook, please click the link displayed in the terminal.
+For users operating on Apple Silicon machines, it may be necessary to append
+<cite>--platform amd64</cite> when building the image, as <cite>pyopenms</cite> is not supported on
+the linux/arm64 architecture. It is advisable to avoid running the Docker container
+on Apple Silicon machines due to the significant performance degradation
+caused by the emulation of the x86_64 architecture.</p>
+<p>Note: <code class="docutils literal notranslate"><span class="pre">bayesian_hdx</span></code> at the above link is a fork of the <a class="reference external" href="https://github.com/salilab/bayesian_hdx">original repo</a> ,
+which has been modified for compatibility with the PIGEON-FEATHER workflow and support for isotopic envelope fitting.</p>
 </section>
 </section>
 
