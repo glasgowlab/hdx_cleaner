@@ -2,7 +2,7 @@ FROM jupyter/scipy-notebook
 
 RUN conda install jupyterlab mdanalysis numba
 RUN conda install pymol-open-source
-RUN pip install pyopenms hdxrate --platform manylinux
+RUN pip install pyopenms hdxrate 
 
 COPY --chown=jovyan . /app/PIGEON_FEATHER
 RUN cd /app/PIGEON_FEATHER && pip install .
