@@ -30,6 +30,16 @@ from hdxrate import k_int_from_sequence
 
 class RangeList:
     def __init__(self, range_list_file=None, range_df=None):
+        '''
+        A class to handle a list of peptides.
+
+        :param range_list_file: csv file with Start, End columns
+        :param range_df: a dataframe
+        
+        :ivar range_list: a dataframe with Start, End columns
+        :ivar range_set: a set of tuples (Start, End)
+        '''
+        
         if range_list_file is not None:
             df = pd.read_csv(range_list_file)
             if len(df.columns) != 2:
@@ -46,15 +56,19 @@ class RangeList:
             self.range_list = range_df
 
     def to_set(self):
+        'convert the range list to a set of tuples (Start, End)'
         return set(tuple(row) for _, row in self.range_list.iterrows())
 
     def to_dataframe(self):
+        'return the range list as a dataframe'
         return self.range_list
 
     def to_csv(self, path):
+        'save the range list to a csv file'
         self.range_list.to_csv(path, index=False)
 
     def union(self, other):
+        'return the union of two range lists'
         if isinstance(other, RangeList):
             other_set = other.to_set()
         elif isinstance(other, set):
@@ -70,6 +84,7 @@ class RangeList:
         return RangeList(range_df=result_df)
 
     def intersection(self, other):
+        'return the intersection of two range lists'
         if isinstance(other, RangeList):
             other_set = other.to_set()
         elif isinstance(other, set):
@@ -85,6 +100,7 @@ class RangeList:
         return RangeList(range_df=result_df)
 
     def difference(self, other):
+        'return the difference of two range lists'
         if isinstance(other, RangeList):
             other_set = other.to_set()
         elif isinstance(other, set):
@@ -102,6 +118,11 @@ class RangeList:
 
 class HDXMSDataCollection:
     def __init__(self, hdxms_data_list):
+        '''
+        A cloolection of HDXMSData objects
+
+        :param hdxms_data_list: a list of HDXMSData objects
+        '''
         self.hdxms_data_list = hdxms_data_list
 
 
@@ -109,6 +130,16 @@ class HDXMSData:
     def __init__(
         self, protein_name, n_fastamides=2, protein_sequence=None, saturation=1
     ):
+        '''
+        A class to store one HDX-MS replicate data. It can contain multiple states.
+
+        :param protein_name: string, name of the protein
+        :param n_fastamides: int, defaults to 2
+        :param protein_sequence: string
+        :param saturation: D saturation, defaults to 1
+        
+        :ivar states: a list of ProteinState objects
+        '''
         self.protein_name = protein_name
         self.states = []
         self.n_fastamides = n_fastamides
@@ -118,6 +149,7 @@ class HDXMSData:
         self.saturation = saturation
 
     def add_state(self, state):
+        'add a state to the HDXMSData object'
         # Check if state already exists
         for existing_state in self.states:
             if existing_state.state_name == state.state_name:
@@ -126,25 +158,35 @@ class HDXMSData:
         return state
 
     def load_protein_sequence(self, sequence):
+        'load protein sequence to the HDXMSData object'
         self.protein_sequence = sequence
 
     @property
     def num_states(self):
+        'return the number of states in the HDXMSData object'
         return len(self.states)
 
     def get_state(self, state_name):
+        'return a state by name'
         for state in self.states:
             if state.state_name == state_name:
                 return state
         return None
 
     def plot_res_coverage(self):
+        'plot residue coverage of the protein'
         from pigeon_feather.plotting import ResidueCoverage
 
         res_cov = ResidueCoverage(self)
         return res_cov.plot()
 
     def reindex_peptide_from_pdb(self, pdb_file, first_residue_index=1):
+        '''
+        reindex peptides based on the pdb file, aften there is a index offset.
+
+        :param pdb_file: path to the pdb file
+        :param first_residue_index: the first residue index in the pdb file
+        '''
         pdb_sequence = pdb2seq(pdb_file)
         a_middle_pep = self.states[0].peptides[int(len(self.states[0].peptides) / 2)]
         pdb_start, pdb_end = find_peptide(pdb_sequence, a_middle_pep.sequence)
@@ -165,14 +207,21 @@ class HDXMSData:
         print(f"Peptide reindexed with offset {-1*index_offset}")
 
     def to_dataframe(self, if_percent=False):
+        'convert the HDXMSData object to a dataframe'
         return revert_hdxmsdata_to_dataframe(self, if_percent=if_percent)
 
     def to_bayesianhdx_format(self, OUTPATH=None):
+        'convert the HDXMSData object to BayesianHDX format and save to a file'
         convert_dataframe_to_bayesianhdx_format(
             self.to_dataframe(), self.protein_name, OUTPATH
         )
 
     def _drop_peptides(self, drop_list):
+        '''
+        drop peptides from the HDXMSData object
+
+        :param drop_list: a lisf Peptide objects
+        '''
         for state in self.states:
             for peptide in drop_list:
                 state.peptides.remove(peptide)
@@ -180,6 +229,16 @@ class HDXMSData:
 
 class ProteinState:
     def __init__(self, state_name, hdxms_data=None):
+        '''
+        A class to store one state of a protein. It can contain multiple peptides.
+
+        :param state_name: name of the state
+        :param hdxms_data: HDXMSData object
+        
+        :ivar peptides: a list of Peptide objects
+        :ivar if_subtracted: if subtracted peptides have been added
+        :ivar num_subtracted_added: number of subtracted peptides added
+        '''
         self.peptides = []
         self.state_name = state_name
         self.if_subtracted = False
@@ -187,6 +246,7 @@ class ProteinState:
         self.hdxms_data = hdxms_data
 
     def add_peptide(self, peptide):
+        'add a peptide to the ProteinState object'
         # Check if peptide already exists
         for existing_peptide in self.peptides:
             if existing_peptide.identifier == peptide.identifier:
@@ -196,9 +256,11 @@ class ProteinState:
 
     @property
     def num_peptides(self):
+        'return the number of peptides in the ProteinState'
         return len(self.peptides)
 
     def get_peptide(self, identifier):
+        'return a peptide by identifier'
         for peptide in self.peptides:
             if peptide.identifier == identifier:
                 return peptide
@@ -272,6 +334,7 @@ class ProteinState:
         return new_peptide_added
 
     def add_all_subtract(self):
+        'add all possible subtracted peptides to the protein state'
         if self.if_subtracted:
             print(
                 f"{self.num_subtracted_added} subtracted peptides have already been subtracted."
@@ -286,13 +349,31 @@ class ProteinState:
 
 
 class Peptide:
-    def __init__(self, sequence, start, end, protein_state=None, n_fastamides=0):
+    def __init__(self, raw_sequence, raw_start, raw_end, protein_state=None, n_fastamides=0):
+        '''
+        A class to store one peptide. It can contain multiple timepoints.
+
+        :param raw_sequence: peptide sequence
+        :param raw_start: peptide start residue number, including fastamides, 1-based
+        :param raw_end: peptide end residue number, including fastamides, 1-based
+        :param protein_state: ProteinState it belongs to
+        :param n_fastamides: number of fastamides
+        
+        :ivar identifier: used for peptide identification, raw sequence including fastamides, e.g. "1-10 ABCDEFGHIJ"
+        :ivar sequence: peptide sequence excluding fastamides, 1-based
+        :ivar start: peptide start residue number excluding fastamides, 1-based
+        :ivar end: peptide end residue number, 1-based
+        :ivar timepoints: a list of Timepoint objects
+        :ivar note: a note for the peptide
+        '''
+        
+        
         self.identifier = (
-            f"{start}-{end} {sequence}"  # raw sequence without any modification
+            f"{raw_start}-{raw_end} {raw_sequence}"  # raw sequence without any modification
         )
-        self.sequence = sequence[n_fastamides:]
-        self.start = start + n_fastamides
-        self.end = end
+        self.sequence = raw_sequence[n_fastamides:]
+        self.start = raw_start + n_fastamides
+        self.end = raw_end
         self.timepoints = []
         self.note = None
         self.n_fastamides = n_fastamides
@@ -303,6 +384,7 @@ class Peptide:
         # self.max_d = self.get_max_d()
 
     def add_timepoint(self, timepoint):
+        'add a timepoint to the peptide'
         # Check if timepoint already exists
         for existing_timepoint in self.timepoints:
             if (
@@ -318,10 +400,12 @@ class Peptide:
 
     @property
     def num_timepoints(self):
+        'return the number of timepoints in the peptide'
         return len(self.timepoints)
 
     @property
     def max_d(self):
+        'max deuterium incorporated in the peptide, determined by full-D experiment'
         # if no inf timepoint, return the theoretical max_d
         inf_tp = self.get_timepoint(np.inf)
 
@@ -334,12 +418,14 @@ class Peptide:
 
     @property
     def theo_max_d(self):
+        'theoretical max deuterium incorporated in the peptide'
         num_prolines = self.sequence.count("P")
         theo_max_d = len(self.sequence) - num_prolines
         return theo_max_d * self.protein_state.hdxms_data.saturation
 
     @property
     def fit_results(self):
+        'fit the D uptakes to mutiple models and return the best fit'
         try:
             max_timepoint = max([tp.deut_time for tp in self.timepoints])
             trialT = np.logspace(1.5, np.log10(max_timepoint * 2), 100)
@@ -479,18 +565,21 @@ class Peptide:
             return None, None, None, None
 
     def get_deut(self, deut_time):
+        'return deuterium num at a specific deuteration time'
         for timepoint in self.timepoints:
             if timepoint.deut_time == deut_time:
                 return timepoint.num_d
         return None
 
     def get_deut_percent(self, deut_time):
+        'return normalized deuterium incorporation at a specific deuteration time'
         for timepoint in self.timepoints:
             if timepoint.deut_time == deut_time:
                 return timepoint.d_percent
         return None
 
     def get_timepoint(self, deut_time, charge_state=None):
+        'return a timepoint by deuteration time and charge state'
         if charge_state is None:
             timepoints = [tp for tp in self.timepoints if tp.deut_time == deut_time]
 
@@ -518,6 +607,16 @@ class Peptide:
 
 class Timepoint:
     def __init__(self, peptide, deut_time, num_d, stddev, charge_state=None):
+        '''
+        A class to store one timepoint of a peptide.
+
+        :param peptide: Peptide object it belongs to
+        :param deut_time: deuteration time
+        :param num_d: number of deuterium incorporated
+        :param stddev: standard deviation of the number of deuterium incorporated
+        :param charge_state: charge state
+        '''
+        
         self.peptide = peptide
         self.deut_time = deut_time
         self.num_d = num_d
@@ -526,6 +625,7 @@ class Timepoint:
         self.charge_state = charge_state
 
     def load_raw_ms_csv(self, csv_file):
+        'load raw mass spec data from a HDExaminer csv file'
         df = pd.read_csv(csv_file, names=["m/z", "Intensity"])
         # normalize intensity to sum to 1
         # df['Intensity'] = df['Intensity'] / df['Intensity'].sum()
@@ -539,17 +639,26 @@ class Timepoint:
 
     @property
     def d_percent(self):
+        'return normalized deuterium incorporation'
         return round(self.num_d / self.peptide.max_d * 100, 2)
 
 
 class HDXStatePeptideCompares:
     def __init__(self, state1_list, state2_list):
+        '''
+        A class to compare peptides between two states.
+
+        :param state1_list: a list of ProteinState objects
+        :param state2_list: a list of ProteinState objects
+        '''
+        
         self.state1_list = state1_list
         self.state2_list = state2_list
         self.peptide_compares = []
 
     @property
     def common_idfs(self):
+        'return a set of common peptide identifiers between two states'
         # indetifer f"{pep.start}-{pep.end} {pep.sequence}"
         peptides1 = set(
             [pep.identifier for state1 in self.state1_list for pep in state1.peptides]
@@ -561,6 +670,7 @@ class HDXStatePeptideCompares:
         return common_sequences
 
     def add_all_compare(self):
+        'add all possible peptide compares between two states'
         import re
 
         peptide_compares = []
@@ -575,6 +685,7 @@ class HDXStatePeptideCompares:
         )
 
     def to_dataframe(self):
+        'convert the HDXStatePeptideCompares object to a dataframe'
         df = pd.DataFrame()
         for peptide_compare in self.peptide_compares:
             peptide_compare_df = pd.DataFrame(
@@ -597,6 +708,14 @@ class HDXStatePeptideCompares:
 
 class PeptideCompare:
     def __init__(self, peptide1_list, peptide2_list):
+        '''
+        A class to compare one peptide between two states.
+
+        :param peptide1_list: a list of Peptide objects
+        :param peptide2_list: a list of Peptide objects
+        :raises ValueError: if peptides have different sequences
+        '''
+        
         self.peptide1_list = [
             peptide for peptide in peptide1_list if peptide is not None
         ]
@@ -612,6 +731,7 @@ class PeptideCompare:
 
     @property
     def compare_info(self):
+        'compare information in the format of "State1-State2: Start-End Sequence"'
         peptide1 = self.peptide1_list[0]
         peptide2 = self.peptide2_list[0]
 
@@ -619,6 +739,7 @@ class PeptideCompare:
 
     @property
     def common_timepoints(self):
+        'common deuteration timepoints between two peptides'
         timepoints1 = set(
             [
                 tp.deut_time
@@ -642,6 +763,7 @@ class PeptideCompare:
 
     @property
     def deut_diff(self):
+        'deuterium difference between two peptides at each timepoint'
         deut_diff = []
         for timepoint in self.common_timepoints:
             deut_diff.append(self.get_deut_diff(timepoint))
@@ -651,13 +773,16 @@ class PeptideCompare:
 
     @property
     def deut_diff_sum(self):
+        'sum of deuterium difference at all timepoint'
         return np.sum(self.deut_diff)
 
     @property
     def deut_diff_avg(self):
+        'average of deuterium difference of all timepoints'
         return np.average(self.deut_diff)
 
     def get_deut_diff(self, timepoint):
+        'deuterium difference between two peptides at a specific timepoint'
         deut1_array = np.array(
             [
                 pep1.get_deut_percent(timepoint)
@@ -679,23 +804,40 @@ class PeptideCompare:
 
 class HDXStateResidueCompares:
     def __init__(self, resids, state1_list, state2_list):
+        '''
+        A class to compare pseudo residues between two states.
+
+        :param resids: a list of residue numbers
+        :param state1_list: a list of ProteinState objects
+        :param state2_list: a list of ProteinState objects
+        '''
         self.resids = resids
         self.residue_compares = []
         self.state1_list = state1_list
         self.state2_list = state2_list
 
     def add_all_compare(self):
+        'add all possible residue compares between two states'
         for resid in self.resids:
             res_compare = ResidueCompare(resid, self.state1_list, self.state2_list)
             if not res_compare.if_empty:
                 self.residue_compares.append(res_compare)
 
     def get_residue_compare(self, resid):
+        'return a residue compare by residue number'
         return self.residue_compares[self.resids.index(resid)]
 
 
 class ResidueCompare:
     def __init__(self, resid, state1_list, state2_list):
+        '''
+        A class to compare one pseudo residue between two states.
+
+        :param resid: residue number, 1-based
+        :param state1_list: a list of ProteinState objects
+        :param state2_list: a list of ProteinState objects
+        '''
+        
         self.resid = resid
         self.state1_list = state1_list
         self.state2_list = state2_list
@@ -707,9 +849,11 @@ class ResidueCompare:
 
     @property
     def compare_info(self):
+        'compare information in the format of "State1-State2: Residue Number"'
         return f"{self.state1_list[0].state_name}-{self.state2_list[0].state_name}: {self.resid}"
 
     def find_peptides_containing_res(self, state_list):
+        'find peptides containing the residue in a state list'
         res_containing_peptides = []
         for state in state_list:
             for pep in state.peptides:
@@ -720,14 +864,17 @@ class ResidueCompare:
 
     @property
     def containing_peptides1(self):
+        'return peptides containing the residue in state1'
         return self.find_peptides_containing_res(self.state1_list)
 
     @property
     def containing_peptides2(self):
+        'return peptides containing the residue in state2'
         return self.find_peptides_containing_res(self.state2_list)
 
     @property
     def if_empty(self):
+        'return True if no peptides contain the residue in either state'
         if len(self.containing_peptides1) == 0 or len(self.containing_peptides2) == 0:
             return True
         else:
@@ -735,6 +882,7 @@ class ResidueCompare:
 
     @property
     def common_timepoints(self):
+        'return common deuteration timepoints between two residues'
         tp1 = set(
             [
                 tp.deut_time
@@ -758,6 +906,7 @@ class ResidueCompare:
 
     @property
     def deut_diff(self):
+        'deuterium difference between two residues at each timepoint'
         if len(self.common_timepoints) == 0:
             return np.nan
         else:
@@ -770,13 +919,16 @@ class ResidueCompare:
 
     @property
     def deut_diff_sum(self):
+        'sum of deuterium difference all timepoints'
         return np.sum(self.deut_diff)
 
     @property
     def deut_diff_avg(self):
+        'average of deuterium difference of all timepoints'
         return np.average(self.deut_diff)
 
     def get_deut_diff(self, timepoint):
+        'deuterium difference between two residues at a specific timepoint'
         deut1_array = np.array(
             [
                 pep1.get_deut_percent(timepoint)
@@ -798,6 +950,14 @@ class ResidueCompare:
 
 class SimulatedData:
     def __init__(self, length=100, seed=42, noise_level=0):
+        '''
+        A class to generate simulated HDX-MS data.
+
+        :param length: protein length, defaults to 100
+        :param seed: random seeds, defaults to 42
+        :param noise_level: noise add to the isotopic envelope
+        '''
+        
         random.seed(seed)
         self.length = length
         self.gen_seq()
@@ -811,6 +971,8 @@ class SimulatedData:
     def gen_seq(
         self,
     ):
+        'generate a random protein sequence of the given length'
+        
         AA_list = [
             "A",
             "R",
@@ -838,6 +1000,8 @@ class SimulatedData:
     def gen_logP(
         self,
     ):
+        'generate a random logP values for each residue in the sequence'
+        
         logP = np.array([random.uniform(2.0, 10.0) for i in range(self.length)])
         # Proline residues are not exchangeable
         for i in range(self.length):
@@ -846,12 +1010,15 @@ class SimulatedData:
         self.logP = logP
 
     def cal_k_init(self):
+        'calculate intrinsic exchange rate for each residue'
         self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 293.0, 7.0))
 
     def cal_k_ex(self):
+        'calculate exchange rate for each residue'
         self.log_k_ex = self.log_k_init - self.logP
 
     def calculate_incorporation(self):
+        'calculate deuterium incorporation for each residue'
         incorporations = []
         for res_i in range(self.length):
             log_kex = self.log_k_ex[res_i]
@@ -862,13 +1029,14 @@ class SimulatedData:
         self.incorporations = np.array(incorporations)
 
     def gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
+        'generate random peptides from the protein sequence'
         chunks = []
         avg_peptide_length = math.ceil(min_len + max_len) / 2
         sequence_length = len(self.sequence)
 
         avg_coverage = math.ceil(num_peptides / sequence_length) * 3
 
-        blank_peptide_obj_list = []  # just for calculating overlapping peptides
+        #blank_peptide_obj_list = []  # just for calculating overlapping peptides
         for i in range(sequence_length):
             count = 0
             while count < avg_coverage:
@@ -930,6 +1098,7 @@ class SimulatedData:
         ]
 
     def convert_to_hdxms_data(self):
+        'convert the simulated data to a HDXMSData object'
         hdxms_data = HDXMSData("simulated_data", protein_sequence=self.sequence)
         protein_state = ProteinState("SIM", hdxms_data=hdxms_data)
         hdxms_data.add_state(protein_state)
