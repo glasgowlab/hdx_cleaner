@@ -2,7 +2,7 @@
 
 ## Main purpose
 
-Clean/parse the raw output from **biotools** and **HDExaminer** to do peptide level or high resolution (single residue to mini-peptides) HDX/MS data anlysis .
+Clean/parse the raw output from **biotools** and **HDExaminer** to do peptide level or high resolution (single residue to mini-peptides) HDX/MS data analysis .
 
 
 ## Typical workflow
@@ -22,22 +22,22 @@ where:
 * --r: rangelist of the good peptide,
 
 
-### 2. HDExaminer maunual QC
+### 2. HDExaminer manual QC
 
 To check the MS spectra, exclude the bad peptides
 
 
-### 3. POST_PIGEON 
+### 3. FEATHER
 
 To parse the output from HDExaminer using interactive object-oriented notebook 
 
 Main function:
-* exclude the bad peptides
+* exclude bad peptides
 * add back exchange rate
 * peptide subtraction
 * make uptake plot/pymol plot/heatmap (peptide level analysis)
 * prepare the input bayesian hdx iso (high resolution protection fators)
-* analysis of the PFs estaiomation resultes
+* analysis of the PFs estimation results
 
 
 ## Installation
