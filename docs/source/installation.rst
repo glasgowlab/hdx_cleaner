@@ -25,7 +25,10 @@ Conda
     # clone the bayesian hdx iso repo
     git clone https://github.com/lucl13/bayesian_hdx.git
 
-    cd PIGEON_FEATHER
+    cd PIGEON-FEATHER
+    pip install .
+
+    cd ../bayesian_hdx
     pip install .
 
 

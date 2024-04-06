@@ -1,9 +1,5 @@
-# Add the Bayesian HDX directory to the system path
-import sys
-sys.path.append(f'{install_dir}')
-
 # Import required modules
-import scoring, sampling, system, model, hxio, tools, data
+from bayesian_hdx_v2 import scoring, sampling, system, model, hxio, tools, data
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt

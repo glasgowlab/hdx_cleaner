@@ -612,13 +612,13 @@ def calculate_coverages(hdxms_datas, state_name):
 
 
 def generate_bayesian_hdx_script(
-    install_dir,
     exp_names,
     protein_sequence,
     protein_state,
     base_directory,
     making_chunks=False,
     if_original_bayesian_hdx=False,
+    install_dir=None
 ):
     """
     Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
@@ -644,14 +644,26 @@ def generate_bayesian_hdx_script(
             with open(f"{pigeon_feather_path}lib/run_bayesian_hdx_template.txt", "r") as file:
                 script_template = file.read()
 
-    # Generate the script using the template
-    generated_script = script_template.format(
-        install_dir=install_dir,
-        protein_state=protein_state,
-        sequence=protein_sequence,
-        exp_names=exp_names,
-        base_directory=base_directory,
-    )
+    if install_dir is None and if_original_bayesian_hdx:
+        raise ValueError("Please provide the install directory for the original Bayesian HDX analysis.")
+
+    if install_dir is None:
+        # Generate the script using the template
+        generated_script = script_template.format(
+            protein_state=protein_state,
+            sequence=protein_sequence,
+            exp_names=exp_names,
+            base_directory=base_directory,
+        )
+    else:
+        # Generate the script using the template
+        generated_script = script_template.format(
+            protein_state=protein_state,
+            sequence=protein_sequence,
+            exp_names=exp_names,
+            base_directory=base_directory,
+            install_dir=install_dir
+        )
 
     return generated_script
 
