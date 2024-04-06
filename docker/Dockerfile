@@ -6,7 +6,7 @@ RUN pip install pyopenms hdxrate
 
 COPY --chown=jovyan . /app/PIGEON_FEATHER
 RUN cd /app/PIGEON_FEATHER && pip install .
-RUN cd /app/ && git clone https://github.com/lucl13/bayesian_hdx.git 
+RUN cd /app/ && git clone https://github.com/lucl13/bayesian_hdx.git && cd bayesian_hdx && pip install .
 
 # install fonts
 USER root
