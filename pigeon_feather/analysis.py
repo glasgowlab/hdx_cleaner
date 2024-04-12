@@ -294,15 +294,22 @@ class Analysis:
 
             if num_Ps > 0:
 
-                return np.append([np.inf]*num_Ps,k_cluster.cluster_centers_.flatten()[sorted_indices]), np.append([0]*num_Ps,std_within_cluster[sorted_indices])
+                cluster_centers = k_cluster.cluster_centers_.flatten()[sorted_indices]
+                std_within_cluster = std_within_cluster[sorted_indices]
 
+                for seq_i, seq in enumerate(self.protein_sequence[v0-1:v1]):
+                    if seq == 'P':
+                        cluster_centers = np.insert(cluster_centers, seq_i, np.inf)
+                        std_within_cluster = np.insert(std_within_cluster, seq_i, np.inf)
+
+                return cluster_centers, std_within_cluster
             else:
                 return k_cluster.cluster_centers_.flatten()[sorted_indices], std_within_cluster[sorted_indices]
 
     
         
 
-    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15, seq_pos=17):
+    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15, seq_pos=17, color=None):
         #mini_peps_index = sorted(list(set([(v[0]-1, v[1]-1) for k, v in self.maximum_resolution_limits.items()])))
         # xx = self.bayesian_hdx_df.mean().values
 
@@ -329,7 +336,10 @@ class Analysis:
         if ax is None:
             fig, ax = plt.subplots(figsize=(20, 5))
         
-        sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5)
+        if color is None:
+            sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5)
+        else:
+            sns.barplot(x=padded_xx, y=padded_yy, ax=ax, label=label, alpha=0.5, color=color)
         #ax.errorbar(np.arange(len(padded_xx)), padded_yy, yerr=padded_yy_std, fmt='none', color='black')
         
         #manutally add the error bar
@@ -359,11 +369,11 @@ class Analysis:
         #coverage = self.calculate_coverages()
         for i in range(len(self.coverage)):
             color_intensity = self.coverage[i] / self.coverage.max() # coverage.max()  # Normalizing the data for color intensity
-            rect = patches.Rectangle((i, 16), 1, height, color=plt.cm.Blues(color_intensity))
+            rect = patches.Rectangle((i-0.5, 16), 1, height, color=plt.cm.Blues(color_intensity))
             ax.add_patch(rect)
             
             #seq
-            ax.text(i+0.5, seq_pos, self.protein_sequence[i], ha='center', va='center', fontsize=22)
+            ax.text(i, seq_pos, self.protein_sequence[i], ha='center', va='center', fontsize=22)
 
         return ax
     
@@ -948,3 +958,47 @@ def check_fitted_isotope_envelope(ana_obj, timepont_obj, if_plot=False):
     sum_ae = get_sum_ae(fitted_isotope_envelope, timepont_obj.isotope_envelope)
     return sum_ae
 
+
+
+
+def get_res_avg_logP(res_obj):
+    '''
+    calculate the average logP value of a residue
+
+    :param res_obj: residue object
+    :return: average logP value
+    '''
+
+    if res_obj.is_nan():
+        return np.nan
+    if res_obj.resname == "P":
+        return 0.0
+    else:
+        return np.average(
+            [
+                i
+                for i in res_obj.clustering_results_logP
+                if i != np.inf and not np.isnan(i)
+            ]
+        )  # skip Pro
+
+
+def get_res_avg_logP_std(res_obj):
+    '''
+    calculate the average logP standard deviation of a residue
+
+    :param res_obj: residue object
+    :return: average logP standard deviation
+    '''
+    if res_obj.is_nan():
+        return np.nan
+    if res_obj.resname == "P":
+        return 0.0
+    else:
+        return np.average(
+            [
+                i
+                for i in res_obj.std_within_clusters_logP
+                if i != np.inf and not np.isnan(i)
+            ]
+        )
