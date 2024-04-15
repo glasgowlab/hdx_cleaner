@@ -286,6 +286,14 @@ class ProteinState:
 
                 for pair in pairs:
 
+                    # skip if subtraction has been done
+                    note1 = f"Subtraction: {pair[0].identifier} - {pair[1].identifier}"
+                    note2 = f"Subtraction: {pair[1].identifier} - {pair[0].identifier}"
+                    notes = [pep.note for pep in self.peptides if pep.note is not None]
+                    
+                    if note1 in notes or note2 in notes:
+                        continue
+                    
                     try:
                         new_peptide = subtract_peptides(pair[0], pair[1])
                     except:
@@ -312,14 +320,17 @@ class ProteinState:
                             continue
 
                     # add the new peptide to the protein state object if not exists
-                    exixting_peptide = self.get_peptide(new_peptide.identifier)
-                    if exixting_peptide is None:
+                    existing_peptide = self.get_peptide(new_peptide.identifier)
+                    
+                    if existing_peptide is None:
                         self.add_peptide(new_peptide)
                         new_peptide_added.append(new_peptide)
 
                     # if exists, add the timepoints to the existing peptide
                     else:
-                        exixting_peptide.timepoints += new_peptide.timepoints
+                        for tp in new_peptide.timepoints:
+                            tp.peptide = existing_peptide
+                            existing_peptide.timepoints.append(tp)
 
         print(f"{len(new_peptide_added)} new peptides added to the protein state.")
 

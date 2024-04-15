@@ -117,27 +117,28 @@ def subtract_peptides(peptide_1, peptide_2):
     if shorter_peptide.start == longer_peptide.start:
         start = shorter_peptide.end + 1
         end = longer_peptide.end
-        new_sequence = longer_peptide.sequence[
-            shorter_peptide.end - shorter_peptide.start + 1 : longer_peptide.end
-            - longer_peptide.start
-            + 1
-        ]
+        # new_sequence = longer_peptide.sequence[
+        #     shorter_peptide.end - shorter_peptide.start + 1 : longer_peptide.end
+        #     - longer_peptide.start
+        #     + 1
+        # ]
     else:
         start = longer_peptide.start
         end = shorter_peptide.start - 1
-        new_sequence = longer_peptide.sequence[
-            0 : shorter_peptide.start - longer_peptide.start
-        ]
+        # new_sequence = longer_peptide.sequence[
+        #     0 : shorter_peptide.start - longer_peptide.start
+        # ]
 
     from pigeon_feather.data import Peptide, Timepoint
 
     # Create a new peptide (n_fastamides=0)
+    new_sequence = peptide_1.protein_state.hdxms_data.protein_sequence[start - 1 -2: end]
     new_peptide = Peptide(
         raw_sequence=new_sequence,
-        raw_start=start,
+        raw_start=start-2,
         raw_end=end,
         protein_state=peptide_1.protein_state,
-        n_fastamides=0,
+        n_fastamides=2,
     )
 
     # return None if:
