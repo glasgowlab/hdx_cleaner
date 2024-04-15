@@ -285,14 +285,6 @@ class ProteinState:
                 pairs = list(itertools.combinations([i for i in subgroup], 2))
 
                 for pair in pairs:
-                    # print(pair[0].identifier, pair[1].identifier)
-
-                    # skip if the new peptide already exists
-                    note1 = f"Subtraction: {pair[0].identifier} - {pair[1].identifier}"
-                    note2 = f"Subtraction: {pair[1].identifier} - {pair[0].identifier}"
-                    notes = [pep.note for pep in self.peptides if pep.note is not None]
-                    if note1 in notes or note2 in notes:
-                        continue
 
                     try:
                         new_peptide = subtract_peptides(pair[0], pair[1])
@@ -319,13 +311,15 @@ class ProteinState:
                         if avg_error > 0.15:
                             continue
 
-                    # add the new peptide to the protein state object
-                    try:
+                    # add the new peptide to the protein state object if not exists
+                    exixting_peptide = self.get_peptide(new_peptide.identifier)
+                    if exixting_peptide is None:
                         self.add_peptide(new_peptide)
                         new_peptide_added.append(new_peptide)
-                    except:
-                        pass
-                        # print(f"Peptide {new_peptide.sequence} already exists in the protein state.")
+
+                    # if exists, add the timepoints to the existing peptide
+                    else:
+                        exixting_peptide.timepoints += new_peptide.timepoints
 
         print(f"{len(new_peptide_added)} new peptides added to the protein state.")
 
@@ -601,6 +595,9 @@ class Peptide:
             ]
             if len(timepoints) == 1:
                 return timepoints[0]
+            elif len(timepoints) > 1:
+                avg_timepoint = average_timepoints(timepoints)
+                return avg_timepoint
             else:
                 return None
 

@@ -133,9 +133,9 @@ def subtract_peptides(peptide_1, peptide_2):
 
     # Create a new peptide (n_fastamides=0)
     new_peptide = Peptide(
-        sequence=new_sequence,
-        start=start,
-        end=end,
+        raw_sequence=new_sequence,
+        raw_start=start,
+        raw_end=end,
         protein_state=peptide_1.protein_state,
         n_fastamides=0,
     )
