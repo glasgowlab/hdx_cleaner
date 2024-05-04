@@ -512,6 +512,11 @@ def event_probabilities(p_array):
     # The probabilities of 0, 1, 2, ..., n successes in n events
     probabilities = dp[n]
 
+    # if negative values, set to 0
+    if np.any(probabilities < 0):
+        probabilities[probabilities < 0] = 0
+        probabilities = probabilities / np.sum(probabilities)
+
     return probabilities
 
 
@@ -619,7 +624,10 @@ def generate_bayesian_hdx_script(
     base_directory,
     making_chunks=False,
     if_original_bayesian_hdx=False,
-    install_dir=None
+    install_dir=None,
+    pH=None,
+    temperature=None,
+    saturation=None,
 ):
     """
     Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
@@ -647,6 +655,9 @@ def generate_bayesian_hdx_script(
 
     if install_dir is None and if_original_bayesian_hdx:
         raise ValueError("Please provide the install directory for the original Bayesian HDX analysis.")
+    
+    if pH is None or temperature is None or saturation is None:
+        raise ValueError("Please provide the pH, temperature, and saturation for the Bayesian HDX analysis.")
 
     if install_dir is None:
         # Generate the script using the template
@@ -655,6 +666,9 @@ def generate_bayesian_hdx_script(
             sequence=protein_sequence,
             exp_names=exp_names,
             base_directory=base_directory,
+            pH=pH,
+            temperature=temperature,
+            saturation=saturation
         )
     else:
         # Generate the script using the template
@@ -663,7 +677,10 @@ def generate_bayesian_hdx_script(
             sequence=protein_sequence,
             exp_names=exp_names,
             base_directory=base_directory,
-            install_dir=install_dir
+            install_dir=install_dir,
+            pH=pH,
+            temperature=temperature,
+            saturation=saturation
         )
 
     return generated_script

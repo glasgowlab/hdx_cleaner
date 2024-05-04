@@ -383,9 +383,9 @@ class Analysis:
         all_peptides = [pep for state in self.protein_state for pep in state.peptides ]
         coverage = np.zeros(len(self.protein_state[0].hdxms_data.protein_sequence))
         for pep in all_peptides:
-            #coverage[pep.start-1:pep.end] += 1
-            num_tps = len([tp for tp in pep.timepoints if tp.deut_time != 0 and tp.deut_time != np.inf])
-            coverage[pep.start-1:pep.end] += num_tps
+            coverage[pep.start-1:pep.end] += 1
+            # num_tps = len([tp for tp in pep.timepoints if tp.deut_time != 0 and tp.deut_time != np.inf])
+            # coverage[pep.start-1:pep.end] += num_tps
         return coverage
 
 
@@ -460,29 +460,6 @@ class Residue(object):
     def log_k_init(self):
         return self.resluts_obj.log_k_init[self.resindex]
 
-
-    def if_off_time_window(self, time_window=(30, 1e12)):
-        if len(self.mini_pep.clustering_results) == 1:
-            return _if_off_time_window(self.log_k_init, self.mini_pep.clustering_results[0], time_window=time_window)
-        else:
-            return any([_if_off_time_window(self.log_k_init, log_PF, time_window=time_window) for log_PF in self.mini_pep.clustering_results])
-        
-
-    # def get_incorporation(self, time):
-    #     #res_logP = np.average(self.mini_pep.clustering_results)
-    #     log_kex = np.average(self.mini_pep.clustering_results_log_kex)
-    #     incorporation = calculate_simple_deuterium_incorporation(log_kex, time)
-    #     return incorporation
-    
-
-
-def _if_off_time_window(log_k_init, log_PF, time_window):
-    if calculate_simple_deuterium_incorporation(log_k_init-log_PF, time_window[0]) > 0.99:
-        return True
-    elif calculate_simple_deuterium_incorporation(log_k_init-log_PF, time_window[1]) < 0.01:
-        return True
-    else:
-        return False
 
         
 class MiniPep(object):
@@ -1002,3 +979,66 @@ def get_res_avg_logP_std(res_obj):
                 if i != np.inf and not np.isnan(i)
             ]
         )
+
+
+def get_res_avg_log_kex(res_obj):
+    '''
+    calculate the average log_kex value of a residue
+
+    :param res_obj: residue object
+    :return: average log_kex value
+    '''
+
+    if res_obj.is_nan():
+        return np.nan
+    if res_obj.resname == "P":
+        return np.inf
+    else:
+        return np.average(
+            [
+                i
+                for i in res_obj.mini_pep.clustering_results_log_kex
+                if np.abs(i) != np.inf and not np.isnan(i)
+            ]
+        )  # skip Pro
+
+
+
+def get_avg_envelope_uptake_errors(protein_states, ana_obj, res):
+    all_peps = [pep  for state in protein_states for pep in state.peptides]
+
+    peps_covering = [
+        pep
+        for pep in all_peps
+        if pep.start <= res.resid <= pep.end and pep.note is None
+    ]
+
+    peps_covering_tps = [
+        tp
+        for pep in peps_covering
+        for tp in pep.timepoints
+        if tp.deut_time != 0 and tp.deut_time != np.inf
+    ]
+
+    envelope_errors = [
+        check_fitted_isotope_envelope(ana_obj, tp) for tp in peps_covering_tps
+    ]
+
+    peptide_uptake_errors = [
+        check_fitted_peptide_uptake(ana_obj=ana_obj,hdxms_data_list=None, peptide_obj=pep) for pep in peps_covering
+    ]
+
+    return np.average(envelope_errors), np.average(peptide_uptake_errors)
+
+
+
+def if_off_time_window(log_kex, time_window, threshold=0.001):
+    if (
+        calculate_simple_deuterium_incorporation(log_kex, time_window[0])
+        > 1 - threshold
+    ):
+        return True
+    elif calculate_simple_deuterium_incorporation(log_kex, time_window[1]) < threshold:
+        return True
+    else:
+        return False

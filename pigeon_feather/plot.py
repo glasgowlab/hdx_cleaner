@@ -31,6 +31,7 @@ class UptakePlot:
         if_plot_fit=True,
         figure=None,
         ax=None,
+        if_d_percent=False,
     ):
         """
         hdxms_datas: list of class HDXMSData objects
@@ -52,10 +53,12 @@ class UptakePlot:
         self.if_plot_fit = if_plot_fit
         self.figure = figure
         self.ax = ax
+        self.if_d_percent = if_d_percent
         # self.title = self.make_title()
         # self.title = identifier
         self.states_subset = states_subset
         self.uptakeplot = self.make_uptakeplot()
+
 
     def make_uptakeplot(self):
         'make a uptakeplot for a peptide'
@@ -182,6 +185,11 @@ class UptakePlot:
                             ],
                         }
                     )
+
+                    if self.if_d_percent:
+                        peptide_df_i["deut"] = [
+                            tp.d_percent for tp in peptide.timepoints
+                        ]
 
                     hdxms_data_df = pd.concat(
                         [hdxms_data_df, peptide_df_i], ignore_index=True

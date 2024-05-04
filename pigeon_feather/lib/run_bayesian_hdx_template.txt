@@ -14,7 +14,7 @@ exp_names = {exp_names}
 infile_list = [f"{base_directory}/bayesian_hdx_{{exp}}_{{protein_state}}.dat" for exp in exp_names]
 
 # conditions
-conditions = data.Conditions(temperature=293., pH=7.0, saturation=1.0)
+conditions = data.Conditions(temperature={temperature}, pH={pH}, saturation={saturation})
 
 # Process datasets
 dataset_list = []
