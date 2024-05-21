@@ -42,3 +42,9 @@ example/*
 test/*
 .ipynb_checkpoints/
 example/plots/*
+
+# egg-info
+*.egg-info
+
+#.vscode
+.vscode/*
