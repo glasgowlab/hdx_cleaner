@@ -161,6 +161,8 @@ def subtract_peptides(peptide_1, peptide_2):
             + shorter_peptide.get_timepoint(tp).stddev ** 2
         )
         timepoint = Timepoint(new_peptide, tp, longer_tp.num_d - shorter_tp.num_d, std)
+        timepoint.note = (
+        f"Subtraction: {longer_peptide.identifier} - {shorter_peptide.identifier}: {tp}")
         # timepoint = Timepoint(new_peptide, tp, longer_peptide.get_deut(tp) - shorter_peptide.get_deut(tp), std)
 
         if (
@@ -524,6 +526,8 @@ def remove_tps_from_state(removing_tps, state):
     # n_tp = len([tp for pep in state.peptides for tp in pep.timepoints])
     # print(f'Number of timepoints before removing: {n_tp}')
 
+    num_pep_removed = 0
+
     # remove the replicates from the state
     for pep in state.peptides:
         pep.timepoints = [tp for tp in pep.timepoints if tp not in removing_tps]
@@ -532,13 +536,15 @@ def remove_tps_from_state(removing_tps, state):
         # Remove peptides without timepoints or with no time 0
         if pep.timepoints == []:
             state.peptides.remove(pep)
-            print(f"{pep.identifier} removed")
+            num_pep_removed += 1
+            #print(f"{pep.identifier} removed")
 
     for pep in state.peptides:
         tp0_tps = [tp for tp in pep.timepoints if tp.deut_time == 0]
         if len(tp0_tps) == 0:
             state.peptides.remove(pep)
-            print(f"{pep.identifier} removed")
+            num_pep_removed += 1
+            #print(f"{pep.identifier} removed")
 
     for pep in state.peptides:
         # with less than 3 timepoints not counting time 0, inf
@@ -551,8 +557,10 @@ def remove_tps_from_state(removing_tps, state):
         )
         if real_tps_num < 3:
             state.peptides.remove(pep)
-            print(f"{pep.identifier} removed")
+            num_pep_removed += 1
+            #print(f"{pep.identifier} removed")
 
+    return num_pep_removed
     # n_tp = len([tp for pep in state.peptides for tp in pep.timepoints])
     # print(f'Number of timepoints after removing: {n_tp}')
 
@@ -600,9 +608,9 @@ def backexchange_for_peps_no_data(hdxms_data_list):
             inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
             pep.add_timepoint(inf_tp)
 
-        print("Number of peptides with no data: {}".format(len(pep_with_no_exp_mad_d)))
+        print("Number of peptides with no max_d data: {}".format(len(pep_with_no_exp_mad_d)))
         print(
-            "Average backexchange for peptides with no data: {}".format(
+            "Average max_d/theo_max_d: {}".format(
                 avg_backexchange
             )
         )
@@ -620,7 +628,7 @@ def calculate_coverages(hdxms_datas, state_name):
 def generate_bayesian_hdx_script(
     exp_names,
     protein_sequence,
-    protein_state,
+    state_name,
     base_directory,
     making_chunks=False,
     if_original_bayesian_hdx=False,
@@ -628,6 +636,9 @@ def generate_bayesian_hdx_script(
     pH=None,
     temperature=None,
     saturation=None,
+    rerun_num=3,
+    extreme_value_prior=False,
+    structural_prior=False,
 ):
     """
     Generates a script for the Bayesian HDX analysis based on the provided parameters and a template file.
@@ -662,26 +673,43 @@ def generate_bayesian_hdx_script(
     if install_dir is None:
         # Generate the script using the template
         generated_script = script_template.format(
-            protein_state=protein_state,
+            protein_state=state_name,
             sequence=protein_sequence,
             exp_names=exp_names,
             base_directory=base_directory,
             pH=pH,
             temperature=temperature,
-            saturation=saturation
+            saturation=saturation,
+            rerun_num=rerun_num
         )
     else:
         # Generate the script using the template
         generated_script = script_template.format(
-            protein_state=protein_state,
+            protein_state=state_name,
             sequence=protein_sequence,
             exp_names=exp_names,
             base_directory=base_directory,
             install_dir=install_dir,
             pH=pH,
             temperature=temperature,
-            saturation=saturation
+            saturation=saturation,
+            rerun_num=rerun_num
         )
+
+    def add_prior_lines(extreme_value_prior, structural_prior, state_name):
+        prior_lines = ""
+        if extreme_value_prior:
+            prior_lines += f"""    extreme_prior = scoring.ExtremeValuePrior(np.load('extreme_prior_{state_name}.npy', allow_pickle=True), scale=0.5)
+    state.scoring_function.add_prior(extreme_prior)
+"""
+        if structural_prior:
+            prior_lines += f"""    structural_prior = scoring.ExtremeValuePrior(np.load('structural_prior_{state_name}.npy', allow_pickle=True), scale=0.75)
+    state.scoring_function.add_prior(structural_prior)
+"""
+        return prior_lines
+
+    prior_lines = add_prior_lines(extreme_value_prior, structural_prior, state_name)
+    generated_script = generated_script.replace("    # priors", prior_lines)
 
     return generated_script
 
@@ -710,3 +738,133 @@ def find_peptide(seq, peptide):
         return (-1, -1)
     end_index = start_index + len(peptide) - 1
     return (start_index, end_index)
+
+
+
+def get_max_deuteration(pep):
+    long_tps = [tp for tp in pep.timepoints if tp.deut_time != np.inf and tp.deut_time > 3600]
+    if len(long_tps) == 0:
+        return 100
+    return max([tp.d_percent for tp in long_tps])
+
+
+def get_min_deuteration(pep):
+    shor_tps = [tp for tp in pep.timepoints if tp.deut_time != 0.0  and tp.deut_time < 100]
+    if len(shor_tps) == 0:
+        return 0
+    else:
+        return min([tp.d_percent for tp in shor_tps])
+
+
+def get_pf_categories(states, protein_sequence):
+    state_names = set([state.state_name for state in states])
+    if len(state_names) > 1:
+        raise ValueError("More than one state in the list")
+
+    all_peptides_in_state = [pep for state in states for pep in state.peptides if pep.note is None]
+
+    low_ex_peps = [(pep.start, pep.end) for pep in all_peptides_in_state if get_max_deuteration(pep) < 20 and pep.note is None]
+    high_ex_peps = [(pep.start, pep.end) for pep in all_peptides_in_state if get_min_deuteration(pep) > 100 and pep.note is None]
+
+    low_ex_res = list(set([j for i in low_ex_peps for j in range(i[0]-1, i[1])]))
+    high_ex_res = list(set([j for i in high_ex_peps for j in range(i[0]-1, i[1])]))
+
+    # print(set(low_ex_res).intersection(set(high_ex_res)))
+
+    pf_categories = []
+    for i in range(len(protein_sequence)):
+        if i in low_ex_res and i not in high_ex_res:
+            pf_categories.append(-1)
+        elif i in high_ex_res and i not in low_ex_res:
+            pf_categories.append(1)
+        else:
+            pf_categories.append(0)
+
+    # print(f"Low exchange residues: {len(low_ex_res)}")
+    # print(f"High exchange residues: {len(high_ex_res)}")
+
+    pf_categories = np.array(pf_categories)
+    return pf_categories
+
+
+def generate_extreme_value_prior(hdx_datas, out_path):
+    protein_sequence = hdx_datas[0].protein_sequence
+    state_names = set([state.state_name for data in hdx_datas for state in data.states])
+
+    for state_name in state_names:
+        states = [state for data in hdx_datas for state in data.states if state.state_name == state_name]
+        pf_categories = get_pf_categories(states, protein_sequence)
+        pf_categories.dump(f"{out_path}/extreme_prior_{state_name}.npy")
+
+
+
+def generate_structural_prior(protein_sequence, pdb_file, out_path=None, state_name=None):
+    """
+    Generate a structural prior for a state based on the pdb file
+    pdb_file: need to be solvated first
+    """
+
+    from pigeon_feather.tools import pdb2seq, find_peptide
+
+    pdb_sequence = pdb2seq(pdb_file)
+    
+    a_middle_pep = protein_sequence[80:90]
+    pdb_start, pdb_end= find_peptide(pdb_sequence, a_middle_pep)
+    index_offset = 80 - pdb_start
+
+    if_exposed_array = get_if_exposed(pdb_file)
+    
+    pf_categories = []
+    for i in range(len(protein_sequence)):
+        res_i_in_pdb = i - index_offset
+        if res_i_in_pdb >= 0 and res_i_in_pdb < len(if_exposed_array):
+            if if_exposed_array[res_i_in_pdb] == 1:
+                'exposed, high exchange'
+                pf_categories.append(1)
+            else:
+                pf_categories.append(0)
+        else:
+            pf_categories.append(0)
+
+    pf_categories = np.array(pf_categories)
+
+    if out_path is not None:
+        pf_categories.dump(f"{out_path}/structural_prior_{state_name}.npy")
+
+    return pf_categories
+
+
+def get_if_exposed(pdb_file,):
+    
+    import warnings
+    import MDAnalysis
+    from MDAnalysis.analysis.hydrogenbonds.hbond_analysis import HydrogenBondAnalysis as HBA
+    
+    warnings.filterwarnings("ignore")
+    
+    u = MDAnalysis.Universe(pdb_file,)
+    
+    protein = u.select_atoms('protein')
+
+    if_exposed = []
+    for res in protein.residues:
+
+        hbonds = HBA(universe=u, d_a_cutoff=3.5, d_h_a_angle_cutoff=30)
+        hbonds.donors_sel = f'protein and name N and resid {res.resid}'
+        # caution, in pdb file generate by mdtraj, HNs are renamed to H
+        
+        selected_hydrogens = res.atoms.select_atoms(f'protein and name H* and resid {res.resid}')
+        if selected_hydrogens.n_atoms == 0:
+            raise ValueError(f'No amide hydrogen found for residue {res.resid}')
+
+        hbonds.hydrogens_sel = 'protein and name H*'
+        hbonds.acceptors_sel = 'name O* or name N*'
+        hbonds.run()
+        
+        if hbonds.results.hbonds.size == 0:
+            if_exposed.append(1)
+        else:
+            if_exposed.append(0)
+        
+    return np.array(if_exposed)
+

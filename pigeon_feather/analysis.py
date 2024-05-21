@@ -273,9 +273,9 @@ class Analysis:
         
         if num_clusters == 0:
             if num_Ps > 0:
-                return np.array([np.inf]*num_Ps), np.array([np.inf]*num_Ps)
+                return np.array([np.inf]*num_Ps), np.array([np.inf]*num_Ps), np.array([np.inf]*num_Ps)
             num_nan = v1 - v0 + 1
-            return np.array([np.nan]*num_nan), np.array([np.nan]*num_nan)
+            return np.array([np.nan]*num_nan), np.array([np.nan]*num_nan), np.array([np.nan]*num_nan)
         
         pool_values = np.concatenate(cleaned_data).flatten()
         pool_values = pool_values[~np.isnan(pool_values)]
@@ -285,26 +285,33 @@ class Analysis:
             sorted_indices = np.argsort(k_cluster.cluster_centers_.flatten())
 
             std_within_cluster = np.zeros(num_clusters)
+            data_within_cluster = np.zeros(num_clusters, dtype=object)
             for i in range(num_clusters):
                 cluster_mask = k_cluster.labels_ == i
                 cluster_points = pool_values[cluster_mask]
                 center = k_cluster.cluster_centers_[i]
                 std_within_cluster[i] = np.std(cluster_points)
+                data_within_cluster[i] = cluster_points
                 
 
-            if num_Ps > 0:
 
-                cluster_centers = k_cluster.cluster_centers_.flatten()[sorted_indices]
-                std_within_cluster = std_within_cluster[sorted_indices]
+
+
+            cluster_centers = k_cluster.cluster_centers_.flatten()[sorted_indices]
+            std_within_cluster = std_within_cluster[sorted_indices]
+            data_within_cluster = data_within_cluster[sorted_indices]
+            
+            if num_Ps > 0:
 
                 for seq_i, seq in enumerate(self.protein_sequence[v0-1:v1]):
                     if seq == 'P':
                         cluster_centers = np.insert(cluster_centers, seq_i, np.inf)
-                        std_within_cluster = np.insert(std_within_cluster, seq_i, np.inf)
+                        std_within_cluster = np.insert(std_within_cluster, seq_i, 0)
+                        data_within_cluster = np.insert(data_within_cluster, seq_i, np.inf)
 
-                return cluster_centers, std_within_cluster
+                return cluster_centers, std_within_cluster, data_within_cluster
             else:
-                return k_cluster.cluster_centers_.flatten()[sorted_indices], std_within_cluster[sorted_indices]
+                return cluster_centers, std_within_cluster, data_within_cluster
 
     
         
@@ -475,6 +482,7 @@ class MiniPep(object):
     def set_clustering_results(self, clustering_results):
         self.clustering_results_log_kex = clustering_results[0]
         self.std_within_clusters_log_kex = clustering_results[1]
+        self.data_within_clusters = clustering_results[2]
         
     def if_single_residue(self):
         return self.start == self.end

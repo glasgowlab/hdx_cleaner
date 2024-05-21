@@ -332,7 +332,7 @@ class ProteinState:
                             tp.peptide = existing_peptide
                             existing_peptide.timepoints.append(tp)
 
-        print(f"{len(new_peptide_added)} new peptides added to the protein state.")
+        print(f"{len(new_peptide_added)} new peptides added to the {self.state_name} state.")
 
         self.subtracted_peptides = new_peptide_added
         self.num_subtracted_added += len(new_peptide_added)
@@ -407,6 +407,11 @@ class Peptide:
     def num_timepoints(self):
         'return the number of timepoints in the peptide'
         return len(self.timepoints)
+    
+    @property
+    def unique_num_timepoints(self):
+        'return the number of unique deuteration timepoints in the peptide'
+        return len(set([tp.deut_time for tp in self.timepoints]))
 
     @property
     def max_d(self):
@@ -631,6 +636,7 @@ class Timepoint:
         self.stddev = stddev
         # self.d_percent = num_d / peptide.max_d
         self.charge_state = charge_state
+        self.note = None
 
     def load_raw_ms_csv(self, csv_file):
         'load raw mass spec data from a HDExaminer csv file'

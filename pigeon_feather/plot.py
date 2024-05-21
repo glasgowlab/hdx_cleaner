@@ -21,6 +21,7 @@ plt.rc("lines", lw=3)
 colors = ["k", "red", "blue", "purple", "gray", "orange", "yellow", "green", "brown"]
 
 
+
 class UptakePlot:
     def __init__(
         self,
@@ -32,6 +33,7 @@ class UptakePlot:
         figure=None,
         ax=None,
         if_d_percent=False,
+        exp_only=False,
     ):
         """
         hdxms_datas: list of class HDXMSData objects
@@ -49,15 +51,17 @@ class UptakePlot:
         self.hdxms_datas = hdxms_datas
         self.identifier = identifier
         self.sequence = identifier.split(" ")[1]
+        self.states_subset = states_subset
         self.color_dict = self.make_color_dict(color_dict)
         self.if_plot_fit = if_plot_fit
         self.figure = figure
         self.ax = ax
         self.if_d_percent = if_d_percent
+        self.exp_only = exp_only
         # self.title = self.make_title()
         # self.title = identifier
-        self.states_subset = states_subset
         self.uptakeplot = self.make_uptakeplot()
+
 
 
     def make_uptakeplot(self):
@@ -149,11 +153,17 @@ class UptakePlot:
         ax.set_ylim(
             min(self.hdxms_datas_df["deut"]) - 1, max(self.hdxms_datas_df["deut"]) + 1
         )
+        #ax.set_xlim(ax.get_xlim()[0]/10, ax.get_xlim()[1] * 10)
+        xlim = ax.get_xlim()
+        left_limit = 10**np.floor(np.log10(xlim[0]))
+        right_limit = 10**np.ceil(np.log10(xlim[1]))
+        ax.set_xlim(left_limit, right_limit)
         # ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
         # ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
         ax.legend()
 
         ax.set_title(self.identifier)
+        plt.subplots_adjust(bottom=0.2) 
         plt.close()
 
         return figure
@@ -175,20 +185,25 @@ class UptakePlot:
                 peptide = state.get_peptide(self.identifier)
 
                 if peptide is not None:
+                    if self.exp_only:
+                        timepoint_objs = [tp for tp in peptide.timepoints if tp.note is None]
+                    else:
+                        timepoint_objs = [tp for tp in peptide.timepoints]
+
                     peptide_df_i = pd.DataFrame(
                         {
-                            "time": [tp.deut_time for tp in peptide.timepoints],
-                            "deut": [tp.num_d for tp in peptide.timepoints],
+                            "time": [tp.deut_time for tp in timepoint_objs],
+                            "deut": [tp.num_d for tp in timepoint_objs],
                             "state": state.state_name,
                             "charge_state": [
-                                tp.charge_state for tp in peptide.timepoints
+                                tp.charge_state for tp in timepoint_objs
                             ],
                         }
                     )
 
                     if self.if_d_percent:
                         peptide_df_i["deut"] = [
-                            tp.d_percent for tp in peptide.timepoints
+                            tp.d_percent for tp in timepoint_objs
                         ]
 
                     hdxms_data_df = pd.concat(
@@ -217,11 +232,14 @@ class UptakePlot:
         group_std = final_group.std(numeric_only=True).reset_index()
 
         idf_start, idf_end = re.match(r"(-?\d+)-(-?\d+)", self.identifier).group(1, 2)
+        states = [state for data in self.hdxms_datas for state in data.states if state.state_name == state_name]
+
         peptide = Peptide(
             self.sequence,
             int(idf_start),
             int(idf_end),
-            f"averaged peptide: {state_name}",
+            #f"averaged peptide: {state_name}",
+            states[0],
             n_fastamides=self.hdxms_datas[0].n_fastamides,
         )
         for i in range(len(group_mean)):
@@ -263,19 +281,24 @@ class UptakePlot:
             ]
 
             color_dict = {}
-            state_names = list(
-                set(
-                    [
-                        state.state_name
-                        for hdxms_data in self.hdxms_datas
-                        for state in hdxms_data.states
-                    ]
+            if self.states_subset is None:
+                state_names = list(
+                    set(
+                        [
+                            state.state_name
+                            for hdxms_data in self.hdxms_datas
+                            for state in hdxms_data.states
+                        ]
+                    )
                 )
-            )
-            state_names.sort()
+                state_names.sort()
+            else:
+                state_names = self.states_subset
+            
             for i, state_name in enumerate(state_names):
                 color_dict[state_name] = colors[i]
         return color_dict
+
 
 
 # new residue coverage plotting script heat map thing - sav

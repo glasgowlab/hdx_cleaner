@@ -348,7 +348,10 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
 
         # iterate through all peptides
         for peptide in state.peptides:
-            pep_sub_folder = path_dict[peptide.identifier]
+            try:
+                pep_sub_folder = path_dict[peptide.identifier]
+            except:
+                raise ValueError(f"Peptide {peptide.identifier} not found in state {state.state_name} at: {state_raw_spectra_path}")
 
             for tp in peptide.timepoints:
                 if tp.deut_time == np.inf:
@@ -387,8 +390,11 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
             for tp in pep.timepoints
             if pep.max_d / pep.theo_max_d < 0.5
         ]
-        tools.remove_tps_from_state(bad_timepoints, state)
-        tools.remove_tps_from_state(high_back_ex_tps, state)
+        num_pep_removed = tools.remove_tps_from_state(bad_timepoints, state)
+        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to missing raw MS data.")
+        
+        num_pep_removed = tools.remove_tps_from_state(high_back_ex_tps, state)
+        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to high back exchange.")
 
     print("Done loading raw MS data.")
 
@@ -436,3 +442,49 @@ def export_iso_files(hdxms_data, outdir, overwrite=True):
         np.save(os.path.join(outdir, npy_file_name), tp.isotope_envelope)
     print(f"Isotope files saved to {outdir}")
     print("Reminder: sequence contains fastamides !!!")
+
+
+def get_all_statics_info(hdxms_datas):
+    # Ensure input is a list for consistent processing
+    if not isinstance(hdxms_datas, list):
+        hdxms_datas = [hdxms_datas]
+    
+    protein_sequence = hdxms_datas[0].protein_sequence
+
+    # Calculate coverage statistics
+    coverage = [tools.calculate_coverages([data], state.state_name)
+                for data in hdxms_datas for state in data.states]
+    coverage = np.mean(np.array(coverage), axis=0)
+    coverage_non_zero = 1 - np.count_nonzero(coverage == 0) / len(protein_sequence)
+    
+    # Gather peptides and calculate statistics
+    all_peptides = [pep for data in hdxms_datas for state in data.states for pep in state.peptides]
+    unique_peptides = set(pep.identifier for pep in all_peptides)
+    avg_pep_length = np.mean([len(pep.sequence) for pep in all_peptides])
+
+    # all tps
+    all_tps = [tp for pep in all_peptides for tp in pep.timepoints if tp.deut_time != np.inf and tp.deut_time != 0.0]
+    time_course = sorted(list(set([tp.deut_time for tp in all_tps])))
+
+
+    # Calculate back exchange rates and IQR
+    peptides_with_exp = [pep for pep in all_peptides if pep.get_timepoint(np.inf) is not None]
+    backexchange_rates = [1 - pep.max_d / pep.theo_max_d for pep in peptides_with_exp]
+    iqr_backexchange = np.percentile(backexchange_rates, 75) - np.percentile(backexchange_rates, 25)
+
+    # Calculate redundancy based on coverage
+    redundancy = np.mean(coverage)
+
+    # Print formatted output
+    print("=" * 60)
+    print(" "*20 + "HDX-MS Data Statistics")
+    print("=" * 60)
+    print(f"Time course (s): {time_course}")
+    print(f"Protein sequence length: {len(protein_sequence)}")
+    print(f"Average coverage: {coverage_non_zero:.2f}")
+    print(f"Number of unique peptides: {len(unique_peptides)}")
+    print(f"Average peptide length: {avg_pep_length:.1f}")
+    print(f"Redundancy (based on average coverage): {redundancy:.1f}")
+    print(f"Average peptide length to redundancy ratio: {avg_pep_length / redundancy:.1f}")
+    print(f"Backexchange average, IQR: {np.mean(backexchange_rates):.2f}" + f", {iqr_backexchange:.2f}")
+    print("=" * 60)

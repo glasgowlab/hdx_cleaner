@@ -24,6 +24,8 @@ def run_simulation(single_dataset, sequence, state_name, outputdir, run_index=1)
     state = mol.add_state(f"{{state_name}}_{{run_index}}")
     state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModelIsotope(state, truncated=False))
 
+    # priors
+
     # Add data to molecule state
     state.add_dataset(single_dataset)
     sys.output.write_datasets()
@@ -62,7 +64,11 @@ def main():
     # Process datasets
     dataset_list = []
     for i, infile in enumerate(infile_list):
-        dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=conditions, error_estimate=0.5, n_fastamides=2, offset=0)
+        try:
+            dataset = hxio.import_HXcolumns(infile, sequence, name=f"{{protein_state}}", percentD=False, conditions=conditions, error_estimate=0.5, n_fastamides=2, offset=0)
+        except:
+            print(f"{{infile}} not found. Skipping...")
+            continue
         raw_spectra_path = f"{base_directory}/spectra_{{exp_names[i]}}/"
         hxio.load_raw_ms_from_pegion(dataset, raw_spectra_path)
         dataset_list.append(dataset)
@@ -76,7 +82,7 @@ def main():
     outputdir = f"{base_directory}/bayesian_hdx_output_chunks"
 
     tasks_all = []
-    for run_index in range(1,4):
+    for run_index in range(1, {rerun_num}+1):
         merged_dataset_90 = deepcopy(merged_dataset)
         merged_dataset_90.peptides = random.sample(merged_dataset.peptides, int(0.9*len(merged_dataset.peptides)))
         
