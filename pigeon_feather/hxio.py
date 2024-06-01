@@ -9,7 +9,7 @@ from pigeon_feather.spectra import refine_large_error_reps
 import pigeon_feather.tools as tools
 
 
-def read_hdx_tables(tables, ranges, exclude=False):
+def read_hdx_tables(tables, ranges, exclude=False, states_subset=None):
     from pigeon_feather.data import RangeList
 
     newbigdf = pd.DataFrame()
@@ -23,12 +23,16 @@ def read_hdx_tables(tables, ranges, exclude=False):
         newbigdf["Start"] = newbigdf["Start"].apply(np.int64)
         newbigdf["End"] = newbigdf["End"].apply(np.int64)
         newbigdf["#D"] = newbigdf["#D"].apply(float)
-
+        newbigdf["Search RT"] = newbigdf["Search RT"].apply(float)
         cleaned = load_ranges_file(range_file, newbigdf, exclude)
         cleaned_list.append(cleaned)
 
     cleaned = pd.concat(cleaned_list, ignore_index=True)
     cleaned = clean_data_df(cleaned)
+
+    if states_subset:
+        cleaned = cleaned[cleaned["Protein State"].isin(states_subset)]
+        
     cleaned.reset_index(inplace=True, drop=True)
     return cleaned
 
@@ -86,24 +90,41 @@ def process_tp_frame(header, bigdf, tp_chunk, new_df):
 
 
 def clean_data_df(df):
-    df = df.groupby(["Sequence", "Deut Time (sec)", "State", "Start", "End", "Charge"])[
-        "#D"
-    ].agg(["mean", "std", "count"])
+    # Group by the specified columns and aggregate the specified columns with mean, std, and count
+    df = df.groupby(
+        ["Sequence", "Deut Time (sec)", "State", "Start", "End", "Charge"]
+    )[["#D", "Search RT"]].agg(["mean", "std", "count"])
+    
+    # Flatten the MultiIndex columns created by agg
+    df.columns = ['_'.join(col).strip() for col in df.columns.values]
+    
     df.reset_index(inplace=True)
+    
     df.rename(
         columns={
-            "mean": "#D",
-            "std": "Stddev",
-            "count": "#Rep",
+            "#D_mean": "#D",
+            "#D_std": "Stddev",
+            "#D_count": "#Rep",
             "State": "Protein State",
+            "Search RT_mean": "RT"
         },
         inplace=True,
     )
-
+    
+    df.drop(columns=["Search RT_std", "Search RT_count"], inplace=True)
+    
+    # add 0 timepoint if not present
     if 0 not in df["Deut Time (sec)"].unique():
-        tp0s = df.groupby(["Sequence", "Protein State", "Start", "End", "Charge"]).sum()
+        # Group by the specified columns and sum the groups
+        tp0s = df.groupby(["Sequence", "Protein State", "Start", "End", "Charge"]).mean()
+        
+        # Set the specified columns to 0
         tp0s[["Deut Time (sec)", "#D", "Stddev"]] = 0
+        
+        # Set "#Rep" to 1
         tp0s["#Rep"] = 1
+        
+        # Concatenate the dataframes and sort the values
         df = pd.concat([df, tp0s.reset_index()]).sort_values(
             by=["Start", "End", "Deut Time (sec)", "Protein State"]
         )
@@ -199,6 +220,7 @@ def load_dataframe_to_hdxmsdata(
                 row["End"],
                 protein_state,
                 n_fastamides=n_fastamides,
+                RT=row["RT"],
             )
             # peptide = Peptide(row['Sequence'], row['Start'], row['End'], protein_state)
             protein_state.add_peptide(peptide)
@@ -444,11 +466,14 @@ def export_iso_files(hdxms_data, outdir, overwrite=True):
     print("Reminder: sequence contains fastamides !!!")
 
 
+
 def get_all_statics_info(hdxms_datas):
     # Ensure input is a list for consistent processing
     if not isinstance(hdxms_datas, list):
         hdxms_datas = [hdxms_datas]
-    
+
+    state_names = list(set([state.state_name for data in hdxms_datas for state in data.states]))
+
     protein_sequence = hdxms_datas[0].protein_sequence
 
     # Calculate coverage statistics
@@ -456,7 +481,7 @@ def get_all_statics_info(hdxms_datas):
                 for data in hdxms_datas for state in data.states]
     coverage = np.mean(np.array(coverage), axis=0)
     coverage_non_zero = 1 - np.count_nonzero(coverage == 0) / len(protein_sequence)
-    
+
     # Gather peptides and calculate statistics
     all_peptides = [pep for data in hdxms_datas for state in data.states for pep in state.peptides]
     unique_peptides = set(pep.identifier for pep in all_peptides)
@@ -479,7 +504,9 @@ def get_all_statics_info(hdxms_datas):
     print("=" * 60)
     print(" "*20 + "HDX-MS Data Statistics")
     print("=" * 60)
+    print(f"States names: {state_names}")
     print(f"Time course (s): {time_course}")
+    print(f"Number of time points: {len(time_course)}")
     print(f"Protein sequence length: {len(protein_sequence)}")
     print(f"Average coverage: {coverage_non_zero:.2f}")
     print(f"Number of unique peptides: {len(unique_peptides)}")

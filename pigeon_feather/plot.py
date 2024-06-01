@@ -71,6 +71,10 @@ class UptakePlot:
         if self.figure is None and self.ax is None:
             figure, ax = plt.subplots(1, 1, figsize=(9, 8))
 
+        else:
+            figure = self.figure
+            ax = self.ax
+            
         scatter_shapes = [
             "o",
             "v",
@@ -215,6 +219,11 @@ class UptakePlot:
                 [hdxms_datas_df, hdxms_data_df], ignore_index=True
             )
         return hdxms_datas_df
+
+
+    @hdxms_datas_df.setter
+    def hdxms_datas_df(self, value):
+        self._hdxms_datas_df = value
 
     @property
     def uptake_std(self):

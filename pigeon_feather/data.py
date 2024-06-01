@@ -354,7 +354,7 @@ class ProteinState:
 
 
 class Peptide:
-    def __init__(self, raw_sequence, raw_start, raw_end, protein_state=None, n_fastamides=0):
+    def __init__(self, raw_sequence, raw_start, raw_end, protein_state=None, n_fastamides=0, RT=None):
         '''
         A class to store one peptide. It can contain multiple timepoints.
 
@@ -382,6 +382,7 @@ class Peptide:
         self.timepoints = []
         self.note = None
         self.n_fastamides = n_fastamides
+        self.RT = RT
 
         if protein_state is not None:
             self.protein_state = protein_state
@@ -657,6 +658,11 @@ class Timepoint:
         return round(self.num_d / self.peptide.max_d * 100, 2)
 
 
+    @property
+    def num_d_backex_corrected(self):
+        return self.num_d/(self.peptide.max_d/self.peptide.theo_max_d)
+
+
 class HDXStatePeptideCompares:
     def __init__(self, state1_list, state2_list):
         '''
@@ -794,6 +800,11 @@ class PeptideCompare:
     def deut_diff_avg(self):
         'average of deuterium difference of all timepoints'
         return np.average(self.deut_diff)
+
+    @deut_diff_avg.setter
+    def deut_diff_avg(self, value):
+        'set the average deuterium difference'
+        self._deut_diff_avg = value
 
     def get_deut_diff(self, timepoint):
         'deuterium difference between two peptides at a specific timepoint'

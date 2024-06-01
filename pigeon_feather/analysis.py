@@ -12,6 +12,7 @@ from pigeon_feather.tools import calculate_simple_deuterium_incorporation, event
 from pigeon_feather.plot import UptakePlot
 from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error
+import MDAnalysis
 
 
 class Analysis:
@@ -316,7 +317,8 @@ class Analysis:
     
         
 
-    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15, seq_pos=17, color=None):
+    def plot_kex_bar(self, ax=None, label=None, resolution_indicator_pos=15, seq_pos=17, color=None, 
+                     show_coverage=True, show_seq=True):
         #mini_peps_index = sorted(list(set([(v[0]-1, v[1]-1) for k, v in self.maximum_resolution_limits.items()])))
         # xx = self.bayesian_hdx_df.mean().values
 
@@ -374,20 +376,22 @@ class Analysis:
         
         #add the coverage heatmap
         #coverage = self.calculate_coverages()
-        for i in range(len(self.coverage)):
-            color_intensity = self.coverage[i] / self.coverage.max() # coverage.max()  # Normalizing the data for color intensity
-            rect = patches.Rectangle((i-0.5, 16), 1, height, color=plt.cm.Blues(color_intensity))
-            ax.add_patch(rect)
-            
-            #seq
-            ax.text(i, seq_pos, self.protein_sequence[i], ha='center', va='center', fontsize=22)
+        if show_coverage:
+            for i in range(len(self.coverage)):
+                color_intensity = self.coverage[i] / self.coverage.max() # coverage.max()  # Normalizing the data for color intensity
+                rect = patches.Rectangle((i-0.5, 16), 1, height, color=plt.cm.Blues(color_intensity))
+                ax.add_patch(rect)
+        #seq 
+        if show_seq:
+            for i in range(len(self.protein_sequence)):
+                ax.text(i, seq_pos, self.protein_sequence[i], ha='center', va='center', fontsize=22)
 
         return ax
     
     #print(mini_pep[0]+1, mini_pep[1]+1)
 
     def calculate_coverages(self, n_fastamides=2):
-        all_peptides = [pep for state in self.protein_state for pep in state.peptides ]
+        all_peptides = [pep for state in self.protein_state for pep in state.peptides if pep.note is None] # exp peptides only
         coverage = np.zeros(len(self.protein_state[0].hdxms_data.protein_sequence))
         for pep in all_peptides:
             coverage[pep.start-1:pep.end] += 1
@@ -493,6 +497,118 @@ class MiniPep(object):
         self.residues.append(residue)
         residue.set_mini_pep(self)
         
+
+class BFactorPlot(object):
+
+    def __init__(self, analysis_object_1,  analysis_object_2=None, pdb_file=None, plot_deltaG=False, temperature=None):
+        '''
+        _summary_
+
+        :param analysis_object_1: an instance of Analysis and data should be loaded
+        :param analysis_object_2: an instance of Analysis and data should be loaded
+        '''
+        self.analysis_object_1 = analysis_object_1
+        self.analysis_object_2 = analysis_object_2
+
+        if self.analysis_object_2 is not None:
+            if analysis_object_1.protein_sequence != analysis_object_2.protein_sequence:
+                raise ValueError('The protein sequences of the two analysis objects are different')
+
+        if pdb_file is None:
+            raise ValueError('pdb_file is required')
+        
+        self.pdb_file = pdb_file
+        self.index_offset = get_index_offset(analysis_object_1, pdb_file)
+
+        self.plot_deltaG = plot_deltaG
+
+        if plot_deltaG:
+            if temperature is None:
+                raise ValueError('temperature is required to convert logP to deltaG')
+            self.temperature = temperature
+
+
+    def plot(self, out_file):
+        '''
+        if analysis_object_2 is None, plot the logP values of the first analysis object
+        if analysis_object_2 is not None, plot the difference of logP values between the two analysis objects
+
+        :param out_file: output pdb file with B-factors set to logP values
+        '''
+
+        if self.analysis_object_2 is None:
+            self._plot_single_state(out_file)
+        else:
+            self._plot_two_states_diff(out_file)
+
+
+
+    def _plot_single_state(self, out_file):
+
+        u = MDAnalysis.Universe(self.pdb_file)
+        u.atoms.tempfactors = 0.0
+
+        for res_i, _ in enumerate(self.analysis_object_1.results_obj.protein_sequence):
+            res = self.analysis_object_1.results_obj.get_residue_by_resindex(res_i)
+            avg_logP, avg_logP_std = get_res_avg_logP(res)
+            std_logP = get_res_avg_logP_std(res) + avg_logP_std
+
+            if std_logP > 5.0:
+                continue
+                #print(res.resid, res.resname ,avg_logP, std_logP, res.clustering_results_logP, res.std_within_clusters_logP)
+
+            protein_res = u.select_atoms(f"protein and resid {res.resid - self.index_offset}")
+            if self.plot_deltaG:
+                avg_deltaG = self._logPF_to_deltaG(avg_logP)
+                protein_res.atoms.tempfactors = avg_deltaG
+
+            else:
+                protein_res.atoms.tempfactors = avg_logP
+
+        u.atoms.write(out_file)
+
+
+
+    def _plot_two_states_diff(self, out_file):
+
+        u = MDAnalysis.Universe(self.pdb_file)
+        u.atoms.tempfactors = 0.0
+
+        for res_i, _ in enumerate(self.analysis_object_1.results_obj.protein_sequence):
+            res_obj_1 = self.analysis_object_1.results_obj.get_residue_by_resindex(res_i)
+            res_obj_2 = self.analysis_object_2.results_obj.get_residue_by_resindex(res_i)
+
+            avg_logP_1, avg_logP_std_1 = get_res_avg_logP(res_obj_1)
+            std_logP_1 = get_res_avg_logP_std(res_obj_1) + avg_logP_std_1
+
+            avg_logP_2, avg_logP_std_2 = get_res_avg_logP(res_obj_2)
+            std_logP_2 = get_res_avg_logP_std(res_obj_2) + avg_logP_std_2
+
+            # if not siginificant difference, 0.35 is the grid size
+            if abs(avg_logP_1 - avg_logP_2) < max(std_logP_1 + std_logP_2, 0.35):
+                continue
+            else:
+                diff_logP = avg_logP_1 - avg_logP_2
+
+            protein_res = u.select_atoms(f"protein and resid {res_obj_1.resid - self.index_offset}")
+            
+            if self.plot_deltaG:
+                diff_deltaG = self._logPF_to_deltaG(diff_logP)
+                protein_res.atoms.tempfactors = diff_deltaG
+            
+            else:
+                protein_res.atoms.tempfactors = diff_logP
+
+        u.atoms.write(out_file)
+
+
+    def _logPF_to_deltaG(self, logPF):
+        '''
+        :param logPF: logP value
+        :return: deltaG in kJ/mol, local unfolding energy
+        '''
+
+        return 8.3145*self.temperature*np.log(10)*logPF/1000
 
 
 class Bayesian_hdx_ParseOutputFile(object):
@@ -951,21 +1067,17 @@ def get_res_avg_logP(res_obj):
     calculate the average logP value of a residue
 
     :param res_obj: residue object
-    :return: average logP value
+    :return: average logP value, std from the average
     '''
 
     if res_obj.is_nan():
-        return np.nan
+        return np.nan, 0.0
     if res_obj.resname == "P":
-        return 0.0
+        return 0.0, 0.0
     else:
-        return np.average(
-            [
-                i
-                for i in res_obj.clustering_results_logP
-                if i != np.inf and not np.isnan(i)
-            ]
-        )  # skip Pro
+        logPs = [i for i in res_obj.clustering_results_logP if i != np.inf and not np.isnan(i)]
+
+        return np.average(logPs), np.std(logPs)
 
 
 def get_res_avg_logP_std(res_obj):
@@ -1050,3 +1162,30 @@ def if_off_time_window(log_kex, time_window, threshold=0.001):
         return True
     else:
         return False
+
+
+def get_index_offset(
+    ana_obj,
+    pdb_file,
+):
+    from pigeon_feather.tools import pdb2seq, find_peptide
+
+    u = MDAnalysis.Universe(pdb_file)
+    protein = u.select_atoms("protein")
+    first_protein_res_index = protein.resids[0] - 1
+
+    pdb_sequence = pdb2seq(pdb_file)
+    a_middle_pep = ana_obj.results_obj.protein_sequence[80:90]
+    pdb_start, pdb_end = find_peptide(pdb_sequence, a_middle_pep)
+    index_offset = 80 - (pdb_start+first_protein_res_index)
+
+    # check if the offset is correct
+    for residue in protein.residues[20:30]:
+        pdb_resname = MDAnalysis.lib.util.convert_aa_code(residue.resname)
+        res = ana_obj.results_obj.get_residue_by_resid(residue.resid + index_offset).resname
+
+        if pdb_resname != res:
+            raise ValueError("The offset is not correct")
+
+    
+    return index_offset

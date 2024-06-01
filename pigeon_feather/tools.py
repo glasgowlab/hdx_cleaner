@@ -1,5 +1,7 @@
 import numpy as np
 import os
+from collections import defaultdict
+import re
 
 
 def refine_data(hdxms_data_list, std_threshold=1.0):
@@ -528,26 +530,23 @@ def remove_tps_from_state(removing_tps, state):
 
     num_pep_removed = 0
 
-    # remove the replicates from the state
+    new_peptides = []
+
     for pep in state.peptides:
         pep.timepoints = [tp for tp in pep.timepoints if tp not in removing_tps]
-        # print(f'{pep.identifier} {tp.deut_time} {tp.charge_state} removed')
 
-        # Remove peptides without timepoints or with no time 0
-        if pep.timepoints == []:
-            state.peptides.remove(pep)
+        if pep.timepoints and any(tp.deut_time == 0 for tp in pep.timepoints):
+            new_peptides.append(pep)
+            
+        else:
             num_pep_removed += 1
-            #print(f"{pep.identifier} removed")
+            # print(f"{pep.identifier} removed")
 
-    for pep in state.peptides:
-        tp0_tps = [tp for tp in pep.timepoints if tp.deut_time == 0]
-        if len(tp0_tps) == 0:
-            state.peptides.remove(pep)
-            num_pep_removed += 1
-            #print(f"{pep.identifier} removed")
+    state.peptides = new_peptides
 
+
+    final_peptides = []
     for pep in state.peptides:
-        # with less than 3 timepoints not counting time 0, inf
         real_tps_num = len(
             set(
                 tp.deut_time
@@ -555,17 +554,15 @@ def remove_tps_from_state(removing_tps, state):
                 if tp.deut_time != np.inf and tp.deut_time != 0.0
             )
         )
-        if real_tps_num < 3:
-            state.peptides.remove(pep)
+        if real_tps_num >= 3:
+            final_peptides.append(pep)
+        else:
             num_pep_removed += 1
             #print(f"{pep.identifier} removed")
 
+    state.peptides = final_peptides
+
     return num_pep_removed
-    # n_tp = len([tp for pep in state.peptides for tp in pep.timepoints])
-    # print(f'Number of timepoints after removing: {n_tp}')
-
-
-from collections import defaultdict
 
 
 def group_by_attributes(objects, attributes):
@@ -585,35 +582,115 @@ def group_by_attributes(objects, attributes):
     return grouped_data
 
 
-def backexchange_for_peps_no_data(hdxms_data_list):
+def backexchange_correction(hdxms_data_list):
     """
-    Calculate the average backexchange for all peptides in the list of hdxms_data objects and correct the peptides has no data
+    backexchange correction for all peptides in the hdxms_data_list
     """
     from pigeon_feather.data import Timepoint
-    
-    for hdxms_data in hdxms_data_list:
-        all_peps = [pep for state in hdxms_data.states for pep in state.peptides]
-        pep_with_exp_max_d = [
-            pep for pep in all_peps if pep.get_timepoint(np.inf) is not None
-        ]
-        pep_with_no_exp_mad_d = [
-            pep for pep in all_peps if not pep in pep_with_exp_max_d
-        ]
-        avg_backexchange = np.mean(
-            [pep.max_d / pep.theo_max_d for pep in pep_with_exp_max_d]
-        )
 
-        for pep in pep_with_no_exp_mad_d:
-            max_d = pep.theo_max_d * avg_backexchange
+    all_peps = [
+        pep
+        for data in hdxms_data_list
+        for state in data.states
+        for pep in state.peptides
+    ]
+
+    all_inf_tps = [
+        tp
+        for data in hdxms_data_list
+        for state in data.states
+        for pep in state.peptides
+        for tp in pep.timepoints
+        if tp.deut_time == np.inf
+    ]
+
+
+    all_inf_tps_grouped = group_by_attributes(
+        all_inf_tps, ["peptide.identifier"]
+    )
+
+
+    pep_with_exp_max_d = [
+        pep for pep in all_peps if pep.get_timepoint(np.inf) is not None
+    ]
+
+    pep_with_no_exp_mad_d = [
+        pep for pep in all_peps if pep.get_timepoint(np.inf) is None
+    ]
+
+    print(f"Number of peptides with experimental max_d: {len(pep_with_exp_max_d)}")
+    print(f"Number of peptides with no experimental max_d: {len(pep_with_no_exp_mad_d)}")
+
+
+    def _add_max_d_to_pep(pep, max_d_theo_max_ratio=None, max_d=None, force=False):
+
+        if max_d_theo_max_ratio is None and max_d is None:
+            raise ValueError("Either max_d_theo_max_ratio or max_d must be provided")
+        
+        if not force:
+
+            if pep.get_timepoint(np.inf) is None:
+                if max_d is None:
+                    max_d = max_d_theo_max_ratio * pep.theo_max_d
+                inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
+                pep.add_timepoint(inf_tp)
+            else:
+                print("np.inf tp already exists")
+
+        else:
+            pep.timepoints = [tp for tp in pep.timepoints if tp.deut_time != np.inf]
+            if max_d is None:
+                max_d = max_d_theo_max_ratio * pep.theo_max_d
             inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
             pep.add_timepoint(inf_tp)
+        return pep
 
-        print("Number of peptides with no max_d data: {}".format(len(pep_with_no_exp_mad_d)))
-        print(
-            "Average max_d/theo_max_d: {}".format(
-                avg_backexchange
-            )
-        )
+    import re
+
+    # Function to extract the numbers from the key
+    def _extract_numbers(key):
+        return list(map(int, re.findall(r'\d+', key[0])))
+
+    # Function to calculate the distance between two keys
+    def _calculate_distance(key1, key2):
+        num1 = _extract_numbers(key1)
+        num2 = _extract_numbers(key2)
+        return sum(abs(a - b) for a, b in zip(num1, num2))
+
+    # Function to find the closest key
+    def find_closest_key(keys, target_key):
+        closest_key = None
+        smallest_distance = float('inf')
+        
+        for key in keys:
+            distance = _calculate_distance(key, target_key)
+            if distance < smallest_distance:
+                smallest_distance = distance
+                closest_key = key
+                
+        return closest_key
+
+
+    keys = [k for k,v  in all_inf_tps_grouped.items() if v != []]
+
+    for pep in all_peps:
+        if all_inf_tps_grouped[(pep.identifier,)] != []:
+            target_key = (pep.identifier,)
+        else:
+            target_key = find_closest_key(keys, (pep.identifier,))
+            #print(pep.identifier, target_key)
+
+        max_d_ratios = [
+            i.num_d/i.peptide.theo_max_d for i in all_inf_tps_grouped[target_key]
+        ]
+        
+        max_d_ratios = list(set(max_d_ratios))
+        avg_max_d_ratios = np.mean(max_d_ratios)        
+        _add_max_d_to_pep(pep, max_d_theo_max_ratio=avg_max_d_ratios, force=True)
+
+
+
+
 
 
 def calculate_coverages(hdxms_datas, state_name):
