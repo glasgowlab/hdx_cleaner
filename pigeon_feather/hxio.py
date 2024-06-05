@@ -293,6 +293,7 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
                     "Stddev": timepoint.stddev,
                     "Charge": str(timepoint.charge_state),
                     "Max #D": pep.max_d,
+                    "unique_id": timepoint.unique_id,
                 }
                 if if_percent:
                     data_dict["#D"] = timepoint.d_percent
@@ -327,6 +328,7 @@ def convert_dataframe_to_bayesianhdx_format(
             "#D": "D_inc",
             "Charge": "charge_state",
             "Max #D": "max_D",
+            "unique_id": "unique_id",
         }
     )
 
@@ -410,7 +412,7 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
             tp
             for pep in state.peptides
             for tp in pep.timepoints
-            if pep.max_d / pep.theo_max_d < 0.5
+            if pep.max_d / pep.theo_max_d < 0.6
         ]
         num_pep_removed = tools.remove_tps_from_state(bad_timepoints, state)
         print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to missing raw MS data.")
@@ -460,7 +462,7 @@ def export_iso_files(hdxms_data, outdir, overwrite=True):
             ]  # -1 to account for python indexing
 
         idf = f"{start}-{end}-{seq}"
-        npy_file_name = f"{state}_{idf}_tp{int(tp.deut_time)}_ch{tp.charge_state}.npy"
+        npy_file_name = f"{state}_{idf}_tp{int(tp.deut_time)}_ch{tp.charge_state}_{tp.unique_id}.npy"
         np.save(os.path.join(outdir, npy_file_name), tp.isotope_envelope)
     print(f"Isotope files saved to {outdir}")
     print("Reminder: sequence contains fastamides !!!")

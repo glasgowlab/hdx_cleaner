@@ -637,6 +637,7 @@ class Timepoint:
         self.stddev = stddev
         # self.d_percent = num_d / peptide.max_d
         self.charge_state = charge_state
+        self.unique_id = id(self)
         self.note = None
 
     def load_raw_ms_csv(self, csv_file):

@@ -3,7 +3,6 @@ import os
 from collections import defaultdict
 import re
 
-
 def refine_data(hdxms_data_list, std_threshold=1.0):
     """
     Remove peptides with large deviation across replicates
@@ -38,10 +37,58 @@ def refine_data(hdxms_data_list, std_threshold=1.0):
 
     for k, v in high_std_tps.items():
         std = np.std([i.num_d for i in v])
-        states = [data.get_state(k[0]) for data in hdxms_data_list]
+        states = [data.get_state(k[0]) for data in hdxms_data_list if data.get_state(k[0]) is not None]
         for state in states:
             remove_tps_from_state(v, state)
         # print(k, std)
+
+
+def find_non_compatible_peptides(hdxms_datas, protein_state, plot_results=False, threshold=0.3):
+    import itertools
+    from pigeon_feather.plot import UptakePlot
+    from collections import Counter
+    import matplotlib.pyplot as plt
+    non_compatible_idfs = []
+    fig_list = []
+
+    subgroups = find_overlapped_peptides(protein_state)
+    peptide_notes = [pep.note for pep in protein_state.peptides if pep.note]
+
+    for peptides in subgroups.values():
+        sorted_peptides = sorted(peptides, key=lambda x: x.start)
+        for pair in itertools.combinations(sorted_peptides, 2):
+            if any(f"Subtraction: {p[0].identifier} - {p[1].identifier}" in peptide_notes for p in [pair, pair[::-1]]):
+                continue
+
+            new_peptide = subtract_peptides(*pair, subtract_envelope=False, filter_result=False)
+            if new_peptide is None:
+                continue
+
+            avg_num_d = np.mean([tp.num_d for tp in new_peptide.timepoints if tp.deut_time != np.inf])
+            if avg_num_d <= -1 * threshold:
+                idfs = new_peptide.note.split('Subtraction:')[1].strip().split(' - ')
+                non_compatible_idfs.extend(idfs)
+
+                if plot_results:
+                    fig, ax = plt.subplots(1, 2, figsize=(18, 8))
+                    for i, idf in enumerate(idfs):
+                        UptakePlot(hdxms_datas, idf, figure=fig, ax=ax[i], states_subset=[protein_state.state_name])
+                        if i > 0:
+                            ax[i].set_ylim(ax[0].get_ylim())
+                    fig_list.append(fig)
+
+    counter = Counter(non_compatible_idfs)
+    filtered_items = {item: count for item, count in counter.items() if count >= 2}
+
+    if len(filtered_items) > 0:
+        print('-'*50)
+        print('STATE:', protein_state.state_name)
+        print('Warning: the following peptides might be problematic, please check.')
+    for idf, count in filtered_items.items():
+        print(f'{idf}: conflict {count} times')
+
+    return fig_list if plot_results else None
+
 
 
 def find_overlapped_peptides(protein_state):
@@ -89,7 +136,7 @@ def find_overlapped_peptides(protein_state):
     return subgroups
 
 
-def subtract_peptides(peptide_1, peptide_2):
+def subtract_peptides(peptide_1, peptide_2, subtract_envelope=True, filter_result=True):
     """
     Subtract two peptides and create a new peptide.
     """
@@ -111,8 +158,8 @@ def subtract_peptides(peptide_1, peptide_2):
         longer_peptide = peptide_2
         shorter_peptide = peptide_1
 
-    timepoints1 = set([tp.deut_time for tp in longer_peptide.timepoints])
-    timepoints2 = set([tp.deut_time for tp in shorter_peptide.timepoints])
+    timepoints1 = set([tp.deut_time for tp in longer_peptide.timepoints if tp.deut_time != np.inf])
+    timepoints2 = set([tp.deut_time for tp in shorter_peptide.timepoints if tp.deut_time != np.inf])
     common_timepoints = list(timepoints1.intersection(timepoints2))
     common_timepoints.sort()
 
@@ -171,6 +218,7 @@ def subtract_peptides(peptide_1, peptide_2):
             hasattr(longer_tp, "isotope_envelope")
             and hasattr(shorter_tp, "isotope_envelope")
             and tp != np.inf
+            and subtract_envelope
         ):
             # timepoint.isotope_envelope = deconvolute(longer_peptide.get_timepoint(tp).isotope_envelope, shorter_peptide.get_timepoint(tp).isotope_envelope)
             p1 = longer_tp.isotope_envelope.copy()
@@ -182,20 +230,27 @@ def subtract_peptides(peptide_1, peptide_2):
                 continue
             else:
                 timepoint.isotope_envelope = best_model[1]
-                if abs(get_centroid_iso(timepoint) - timepoint.num_d) > 0.5:
+                if abs(get_num_d_from_iso(timepoint) - timepoint.num_d) > 0.5:
                     continue
                 new_peptide.add_timepoint(timepoint)
 
         else:
             new_peptide.add_timepoint(timepoint)
 
-    if len(new_peptide.timepoints) < 3:
+
+    # back exchange correction
+    new_peptide = _add_max_d_to_pep(new_peptide, max_d_theo_max_ratio=longer_peptide.max_d/shorter_peptide.max_d)
+
+    
+
+    if len(new_peptide.timepoints) < 3 and filter_result:
         return None
 
     # skip if new_peptide is negative
     if (
-        np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3
-        or new_peptide.max_d < 0.0
+        (np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3
+        or new_peptide.max_d < 0.0)
+        and filter_result
     ):
         return None
 
@@ -208,6 +263,67 @@ def subtract_peptides(peptide_1, peptide_2):
     #     raise ValueError("Cannot subtract peptides without time 0.")
 
     return new_peptide
+
+
+
+def average_hdxms_datas(hdxms_datas, states_subset=None):
+
+    from pigeon_feather.data import HDXMSData, ProteinState, Peptide
+
+    protein_sequence = hdxms_datas[0].protein_sequence
+    state_names = [state.state_name for data in hdxms_datas for state in data.states]
+
+
+    all_tps = [
+        tp
+        for data in hdxms_datas
+        for state in data.states
+        for peptide in state.peptides
+        for tp in peptide.timepoints
+        if states_subset is None or state.state_name in states_subset
+        # if tp.deut_time != np.inf and tp.deut_time != 0.0
+    ]
+
+    grouped_tps = group_by_attributes(
+        all_tps, ["peptide.protein_state.state_name", "peptide.identifier", "deut_time"]
+    )
+
+    hdxms_data_avg = HDXMSData(
+        "Avg data",
+        2,
+        protein_sequence=protein_sequence,
+        saturation=hdxms_datas[0].saturation,
+    )
+
+    for state in state_names:
+        protein_state = hdxms_data_avg.get_state(state)
+        if protein_state is None:
+            protein_state = ProteinState(state, hdxms_data=hdxms_data_avg)
+            hdxms_data_avg.add_state(protein_state)
+
+    for k, v in grouped_tps.items():
+        protein_state = hdxms_data_avg.get_state(k[0])
+
+        if protein_state.get_peptide(k[1]) is None:
+            raw_seq = v[0].peptide.identifier.split(" ")[-1]
+            raw_start = int(v[0].peptide.identifier.split(" ")[0].split("-")[0])
+            raw_end = int(v[0].peptide.identifier.split(" ")[0].split("-")[1])
+
+            peptide = Peptide(
+                raw_seq,
+                raw_start,
+                raw_end,
+                hdxms_data_avg.get_state(k[0]),
+                n_fastamides=2,
+            )
+            protein_state.add_peptide(peptide)
+        else:
+            peptide = protein_state.get_peptide(k[1])
+
+        avg_tp = average_timepoints(v)
+        peptide.add_timepoint(avg_tp)
+
+    return hdxms_data_avg
 
 
 def average_timepoints(tps_list):
@@ -586,7 +702,6 @@ def backexchange_correction(hdxms_data_list):
     """
     backexchange correction for all peptides in the hdxms_data_list
     """
-    from pigeon_feather.data import Timepoint
 
     all_peps = [
         pep
@@ -620,30 +735,6 @@ def backexchange_correction(hdxms_data_list):
 
     print(f"Number of peptides with experimental max_d: {len(pep_with_exp_max_d)}")
     print(f"Number of peptides with no experimental max_d: {len(pep_with_no_exp_mad_d)}")
-
-
-    def _add_max_d_to_pep(pep, max_d_theo_max_ratio=None, max_d=None, force=False):
-
-        if max_d_theo_max_ratio is None and max_d is None:
-            raise ValueError("Either max_d_theo_max_ratio or max_d must be provided")
-        
-        if not force:
-
-            if pep.get_timepoint(np.inf) is None:
-                if max_d is None:
-                    max_d = max_d_theo_max_ratio * pep.theo_max_d
-                inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
-                pep.add_timepoint(inf_tp)
-            else:
-                print("np.inf tp already exists")
-
-        else:
-            pep.timepoints = [tp for tp in pep.timepoints if tp.deut_time != np.inf]
-            if max_d is None:
-                max_d = max_d_theo_max_ratio * pep.theo_max_d
-            inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
-            pep.add_timepoint(inf_tp)
-        return pep
 
     import re
 
@@ -690,6 +781,28 @@ def backexchange_correction(hdxms_data_list):
 
 
 
+def _add_max_d_to_pep(pep, max_d_theo_max_ratio=None, max_d=None, force=False):
+    from pigeon_feather.data import Timepoint
+    if max_d_theo_max_ratio is None and max_d is None:
+        raise ValueError("Either max_d_theo_max_ratio or max_d must be provided")
+    
+    if not force:
+
+        if pep.get_timepoint(np.inf) is None:
+            if max_d is None:
+                max_d = max_d_theo_max_ratio * pep.theo_max_d
+            inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
+            pep.add_timepoint(inf_tp)
+        else:
+            print("np.inf tp already exists")
+
+    else:
+        pep.timepoints = [tp for tp in pep.timepoints if tp.deut_time != np.inf]
+        if max_d is None:
+            max_d = max_d_theo_max_ratio * pep.theo_max_d
+        inf_tp = Timepoint(pep, np.inf, max_d, np.nan)
+        pep.add_timepoint(inf_tp)
+    return pep
 
 
 
