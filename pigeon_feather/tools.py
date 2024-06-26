@@ -239,7 +239,7 @@ def subtract_peptides(peptide_1, peptide_2, subtract_envelope=True, filter_resul
 
 
     # back exchange correction
-    new_peptide = _add_max_d_to_pep(new_peptide, max_d_theo_max_ratio=longer_peptide.max_d/shorter_peptide.max_d)
+    new_peptide = _add_max_d_to_pep(new_peptide, max_d_theo_max_ratio=longer_peptide.max_d/longer_peptide.theo_max_d)
 
     
 
@@ -249,7 +249,9 @@ def subtract_peptides(peptide_1, peptide_2, subtract_envelope=True, filter_resul
     # skip if new_peptide is negative
     if (
         (np.average([tp.num_d for tp in new_peptide.timepoints]) < -0.3
-        or new_peptide.max_d < 0.0)
+        or new_peptide.max_d < 0.0 
+        or new_peptide.max_d/new_peptide.theo_max_d < 0.6
+        or new_peptide.max_d/new_peptide.theo_max_d > 1.2)
         and filter_result
     ):
         return None
@@ -367,6 +369,73 @@ def average_timepoints(tps_list):
         pass
 
     return avg_timepoint
+
+
+
+def merge_hdxms_datas(hdxms_datas, states_subset=None):
+
+
+    from pigeon_feather.data import HDXMSData, ProteinState, Peptide
+
+    protein_sequence = hdxms_datas[0].protein_sequence
+    
+    if states_subset is None:
+        state_names = list(set([state.state_name for data in hdxms_datas for state in data.states]))
+    else:
+        state_names = list(set([state.state_name for data in hdxms_datas for state in data.states if state.state_name in states_subset]))
+
+    all_tps = [
+        tp
+        for data in hdxms_datas
+        for state in data.states
+        for peptide in state.peptides
+        for tp in peptide.timepoints
+        if states_subset is None or state.state_name in states_subset
+        # if tp.deut_time != np.inf and tp.deut_time != 0.0
+    ]
+
+
+    hdxms_data_merged = HDXMSData(
+        "merged data",
+        2,
+        protein_sequence=protein_sequence,
+        saturation=hdxms_datas[0].saturation,
+    )
+
+
+    for state in state_names:
+        protein_state = hdxms_data_merged.get_state(state)
+        if protein_state is None:
+            protein_state = ProteinState(state, hdxms_data=hdxms_data_merged)
+            hdxms_data_merged.add_state(protein_state)
+
+    for tp in all_tps:
+        protein_state = hdxms_data_merged.get_state(tp.peptide.protein_state.state_name)
+
+        if protein_state.get_peptide(tp.peptide.identifier) is None:
+            raw_seq = tp.peptide.identifier.split(" ")[-1]
+            raw_start = int(tp.peptide.identifier.split(" ")[0].split("-")[0])
+            raw_end = int(tp.peptide.identifier.split(" ")[0].split("-")[1])
+
+            peptide = Peptide(
+                raw_seq,
+                raw_start,
+                raw_end,
+                protein_state,
+                n_fastamides=2,
+            )
+            protein_state.add_peptide(peptide)
+        else:
+            peptide = protein_state.get_peptide(tp.peptide.identifier)
+
+        try:
+            peptide.add_timepoint(tp)
+        except:
+            # skip if the timepoint already exists
+            continue
+
+    return hdxms_data_merged
+
 
 
 def deconvolute_fft(p, p1):

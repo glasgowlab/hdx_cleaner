@@ -16,7 +16,7 @@ import MDAnalysis
 
 
 class Analysis:
-    def __init__(self, protein_state, temperature=293., pH=7.):
+    def __init__(self, protein_state, temperature=293., pH=7., ):
         
         if not isinstance(protein_state, list):
             self.protein_state = [protein_state]
@@ -30,6 +30,7 @@ class Analysis:
         self.protein_sequence = self.protein_state[0].hdxms_data.protein_sequence
         self.log_k_init = np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
         self.coverage = self.calculate_coverages()
+        self.saturation = protein_state[0].hdxms_data.saturation
 
     
     def find_mini_overlap(self, peps_covering,):
@@ -209,23 +210,36 @@ class Analysis:
 
     def load_bayesian_hdx_oupt_chunks(self, state_name, chunk_size, chunk_num, bayesian_hdx_data_folder, run_num=1, N=50):
 
-        df_list_all = []        
+        df_list_all = []      
+        df_be_list_all = []  
         range_chunks = [(i*chunk_size+1, (i+1)*chunk_size) for i in range(chunk_num)]
 
         for run_index in range(1, run_num+1):
             df_list_i = []
+            df_be_list_i = []
             bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith(f'{run_index}.dat') and state_name in f])
 
             for i, chunk in enumerate(range_chunks):
                 pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_files[i])
                 df = pof.get_best_scoring_models_pf_df(N=N)
-                df_list_i.append(df.iloc[:, chunk[0]-1:chunk[1]]) 
-            
+                if isinstance(df, pd.DataFrame):
+                    df_list_i.append(df.iloc[:, chunk[0]-1:chunk[1]]) 
+                else:
+                    df_list_i.append(df[0].iloc[:, chunk[0]-1:chunk[1]])
+                    df_be_list_i.append(df[1])
+            if df_be_list_i != []:
+                df_be_run_i = pd.concat(df_be_list_i, axis=1)
+                df_be_run_i = df_be_run_i.groupby(by=lambda x: x, axis=1).mean()
+                df_be_list_all.append(df_be_run_i)
             df_run_i = pd.concat(df_list_i, axis=1)
             #df_run_i['run_index'] = run_index
             df_list_all.append(df_run_i)
+
         
         self.bayesian_hdx_df = pd.concat(df_list_all, axis=0)
+        
+        if df_be_list_all != []:
+            self.bayesian_hdx_df_be = pd.concat(df_be_list_all, axis=0)
         
         self._convert_logP_to_log_kex(self.bayesian_hdx_df)
 
@@ -499,24 +513,32 @@ class MiniPep(object):
         
 
 class BFactorPlot(object):
-
-    def __init__(self, analysis_object_1,  analysis_object_2=None, pdb_file=None, plot_deltaG=False, temperature=None):
-        '''
+    def __init__(
+        self,
+        analysis_object_1,
+        analysis_object_2=None,
+        pdb_file=None,
+        plot_deltaG=False,
+        temperature=None,
+    ):
+        """
         _summary_
 
         :param analysis_object_1: an instance of Analysis and data should be loaded
         :param analysis_object_2: an instance of Analysis and data should be loaded
-        '''
+        """
         self.analysis_object_1 = analysis_object_1
         self.analysis_object_2 = analysis_object_2
 
         if self.analysis_object_2 is not None:
             if analysis_object_1.protein_sequence != analysis_object_2.protein_sequence:
-                raise ValueError('The protein sequences of the two analysis objects are different')
+                raise ValueError(
+                    "The protein sequences of the two analysis objects are different"
+                )
 
         if pdb_file is None:
-            raise ValueError('pdb_file is required')
-        
+            raise ValueError("pdb_file is required")
+
         self.pdb_file = pdb_file
         self.index_offset = get_index_offset(analysis_object_1, pdb_file)
 
@@ -524,91 +546,101 @@ class BFactorPlot(object):
 
         if plot_deltaG:
             if temperature is None:
-                raise ValueError('temperature is required to convert logP to deltaG')
+                raise ValueError("temperature is required to convert logP to deltaG")
             self.temperature = temperature
 
-
     def plot(self, out_file):
-        '''
+        """
         if analysis_object_2 is None, plot the logP values of the first analysis object
         if analysis_object_2 is not None, plot the difference of logP values between the two analysis objects
 
         :param out_file: output pdb file with B-factors set to logP values
-        '''
+        """
 
         if self.analysis_object_2 is None:
             self._plot_single_state(out_file)
         else:
             self._plot_two_states_diff(out_file)
 
-
-
     def _plot_single_state(self, out_file):
-
         u = MDAnalysis.Universe(self.pdb_file)
         u.atoms.tempfactors = 0.0
 
         for res_i, _ in enumerate(self.analysis_object_1.results_obj.protein_sequence):
             res = self.analysis_object_1.results_obj.get_residue_by_resindex(res_i)
-            avg_logP, avg_logP_std = get_res_avg_logP(res)
-            std_logP = get_res_avg_logP_std(res) + avg_logP_std
+            avg_logP, std_logP = get_res_avg_logP(res)
 
-            if std_logP > 5.0:
+            if std_logP > 3.0:
+                avg_logP = np.nan
                 continue
-                #print(res.resid, res.resname ,avg_logP, std_logP, res.clustering_results_logP, res.std_within_clusters_logP)
+                # print(res.resid, res.resname ,avg_logP, std_logP, res.clustering_results_logP, res.std_within_clusters_logP)
 
-            protein_res = u.select_atoms(f"protein and resid {res.resid - self.index_offset}")
+            protein_res = u.select_atoms(
+                f"protein and resid {res.resid - self.index_offset}"
+            )
             if self.plot_deltaG:
                 avg_deltaG = self._logPF_to_deltaG(avg_logP)
                 protein_res.atoms.tempfactors = avg_deltaG
 
             else:
                 protein_res.atoms.tempfactors = avg_logP
+        
+        PROs = u.select_atoms(f"resname PRO")
+        PROs.atoms.tempfactors = np.nan
 
         u.atoms.write(out_file)
 
-
-
     def _plot_two_states_diff(self, out_file):
-
         u = MDAnalysis.Universe(self.pdb_file)
         u.atoms.tempfactors = 0.0
 
         for res_i, _ in enumerate(self.analysis_object_1.results_obj.protein_sequence):
-            res_obj_1 = self.analysis_object_1.results_obj.get_residue_by_resindex(res_i)
-            res_obj_2 = self.analysis_object_2.results_obj.get_residue_by_resindex(res_i)
+            res_obj_1 = self.analysis_object_1.results_obj.get_residue_by_resindex(
+                res_i
+            )
+            res_obj_2 = self.analysis_object_2.results_obj.get_residue_by_resindex(
+                res_i
+            )
 
-            avg_logP_1, avg_logP_std_1 = get_res_avg_logP(res_obj_1)
-            std_logP_1 = get_res_avg_logP_std(res_obj_1) + avg_logP_std_1
+            avg_logP_1, std_logP_1 = get_res_avg_logP(res_obj_1)
+            avg_logP_2, std_logP_2 = get_res_avg_logP(res_obj_2)
 
-            avg_logP_2, avg_logP_std_2 = get_res_avg_logP(res_obj_2)
-            std_logP_2 = get_res_avg_logP_std(res_obj_2) + avg_logP_std_2
+            combined_std = np.sqrt(std_logP_1 ** 2 + std_logP_2 ** 2)
 
             # if not siginificant difference, 0.35 is the grid size
-            if abs(avg_logP_1 - avg_logP_2) < max(std_logP_1 + std_logP_2, 0.35):
+            if (
+                abs(avg_logP_1 - avg_logP_2) < max(combined_std, 0.35)
+                and combined_std <= 3.0
+            ):
                 continue
+            elif combined_std > 3.0:
+                diff_logP = np.nan
             else:
                 diff_logP = avg_logP_1 - avg_logP_2
 
-            protein_res = u.select_atoms(f"protein and resid {res_obj_1.resid - self.index_offset}")
-            
+            protein_res = u.select_atoms(
+                f"protein and resid {res_obj_1.resid - self.index_offset}"
+            )
+
             if self.plot_deltaG:
                 diff_deltaG = self._logPF_to_deltaG(diff_logP)
                 protein_res.atoms.tempfactors = diff_deltaG
-            
+
             else:
                 protein_res.atoms.tempfactors = diff_logP
 
+        PROs = u.select_atoms(f"resname PRO")
+        PROs.atoms.tempfactors = np.nan
+
         u.atoms.write(out_file)
 
-
     def _logPF_to_deltaG(self, logPF):
-        '''
+        """
         :param logPF: logP value
         :return: deltaG in kJ/mol, local unfolding energy
-        '''
+        """
 
-        return 8.3145*self.temperature*np.log(10)*logPF/1000
+        return 8.3145 * self.temperature * np.log(10) * logPF / 1000
 
 
 class Bayesian_hdx_ParseOutputFile(object):
@@ -683,6 +715,9 @@ class Bayesian_hdx_ParseOutputFile(object):
 
             elif line.split(":")[0].strip() == "Molecule_Name":
                 self.molecule_name = line.split(":")[1].strip()
+
+            elif line[0:3] == "!! ":
+                self.pep_idfs = [str(i) for i in line[3:].strip().strip('|').split("|")]
         f.close()
 
     def clear_models(self):
@@ -777,13 +812,20 @@ class Bayesian_hdx_ParseOutputFile(object):
                     model_list = []
                     for m in model_string.split(" "):
                         model_list.append(int(m))
+                    
+                    if hasattr(self, 'pep_idfs'):
+                        back_exchange_list = [float(be) for be in line.split("||")[1].strip().split(" ")]
+                    
                     if sort_sectors:
                         model_list = self.sort_model_by_sector(model_list)
                     if return_pf:
                         ml1 = model_list
                         model_list = self.models_to_protection_factors(model_list)
                         #print(score, model_list, ml1)
-                    best_scoring_models.append((score, model_list))
+                    if hasattr(self, 'pep_idfs'):
+                        best_scoring_models.append((score, model_list, back_exchange_list))
+                    else:
+                        best_scoring_models.append((score, model_list))
                     best_scoring_models = sorted(best_scoring_models, key=lambda x: x[0])
 
         self.best_scoring_models = best_scoring_models
@@ -904,14 +946,23 @@ class Bayesian_hdx_ParseOutputFile(object):
     
     def get_best_scoring_models_pf_df(self,  N=200):
         
-        self.get_best_scoring_models(N=N, return_pf=True, sort_sectors=True)
+        self.get_best_scoring_models(N=N, return_pf=True, sort_sectors=False)
         
-        pfs = []      
+        pfs = []     
         for i in self.best_scoring_models:
             # Append just the model itself. 
             pfs.append(np.array(i[1][0]))
             
         df_pfs = pd.DataFrame(pfs)
+
+        if hasattr(self, 'pep_idfs'):
+            bes = []
+            for i in self.best_scoring_models:
+                bes.append(np.array(i[2]))
+            
+            df_bes = pd.DataFrame(bes, columns=self.pep_idfs)
+
+            return df_pfs, df_bes
         
         return df_pfs
     
@@ -965,7 +1016,7 @@ def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=F
             log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
             peptide_incorporation = 0
             for log_kex in log_kex_inrange:
-                peptide_incorporation += calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)
+                peptide_incorporation += calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)*ana_obj.saturation
             fitted_uptakes.append(peptide_incorporation)
     
     
@@ -1013,7 +1064,7 @@ def check_fitted_isotope_envelope(ana_obj, timepont_obj, if_plot=False):
         log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
         tp_raw_deut = []
         for log_kex in log_kex_inrange:
-            tp_raw_deut.append(calculate_simple_deuterium_incorporation(-1*log_kex, deut_time))
+            tp_raw_deut.append(calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)*ana_obj.saturation)
 
         try:
             full_d_scaler = timepont_obj.peptide.get_timepoint(np.inf).num_d/timepont_obj.peptide.theo_max_d
@@ -1076,8 +1127,12 @@ def get_res_avg_logP(res_obj):
         return 0.0, 0.0
     else:
         logPs = [i for i in res_obj.clustering_results_logP if i != np.inf and not np.isnan(i)]
+        stds = [i for i in res_obj.std_within_clusters_logP if i != np.inf and not np.isnan(i)]
 
-        return np.average(logPs), np.std(logPs)
+        avg_logP = np.mean(logPs)
+        avg_std = np.sqrt(np.sum(np.square(stds)) / len(stds) ** 2)
+
+        return avg_logP, avg_std
 
 
 def get_res_avg_logP_std(res_obj):
@@ -1092,13 +1147,11 @@ def get_res_avg_logP_std(res_obj):
     if res_obj.resname == "P":
         return 0.0
     else:
-        return np.average(
-            [
-                i
-                for i in res_obj.std_within_clusters_logP
-                if i != np.inf and not np.isnan(i)
-            ]
-        )
+
+        stds = [i for i in res_obj.std_within_clusters_logP if i != np.inf and not np.isnan(i)]
+        avg_std = np.sqrt(np.sum(np.square(stds)) / len(stds) ** 2)
+
+        return avg_std
 
 
 def get_res_avg_log_kex(res_obj):

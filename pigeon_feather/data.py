@@ -26,6 +26,7 @@ from pigeon_feather.hxio import (
     revert_hdxmsdata_to_dataframe,
 )
 from hdxrate import k_int_from_sequence
+import uuid
 
 
 class RangeList:
@@ -42,7 +43,10 @@ class RangeList:
         
         if range_list_file is not None:
             df = pd.read_csv(range_list_file)
-            if len(df.columns) != 2:
+            if 'Start' in df.columns and 'End' in df.columns:
+                self.range_list = df[["Start", "End"]]
+            else:
+
                 df = pd.read_csv(range_list_file, skiprows=1)
                 self.range_list = (
                     df[["Start", "End"]]
@@ -50,8 +54,6 @@ class RangeList:
                     .sort_values(by="Start")
                     .reset_index(drop=True)
                 )
-            else:
-                self.range_list = df[["Start", "End"]]
         else:
             self.range_list = range_df
 
@@ -383,6 +385,7 @@ class Peptide:
         self.note = None
         self.n_fastamides = n_fastamides
         self.RT = RT
+        self.unique_id = str(uuid.uuid4())
 
         if protein_state is not None:
             self.protein_state = protein_state
@@ -637,7 +640,7 @@ class Timepoint:
         self.stddev = stddev
         # self.d_percent = num_d / peptide.max_d
         self.charge_state = charge_state
-        self.unique_id = id(self)
+        self.unique_id = str(uuid.uuid4())
         self.note = None
 
     def load_raw_ms_csv(self, csv_file):

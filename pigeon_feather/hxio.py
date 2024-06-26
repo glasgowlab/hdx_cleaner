@@ -293,7 +293,7 @@ def revert_hdxmsdata_to_dataframe(hdxms_data, if_percent=False):
                     "Stddev": timepoint.stddev,
                     "Charge": str(timepoint.charge_state),
                     "Max #D": pep.max_d,
-                    "unique_id": timepoint.unique_id,
+                    "timepoint_unique_id": timepoint.unique_id,
                 }
                 if if_percent:
                     data_dict["#D"] = timepoint.d_percent
@@ -328,7 +328,7 @@ def convert_dataframe_to_bayesianhdx_format(
             "#D": "D_inc",
             "Charge": "charge_state",
             "Max #D": "max_D",
-            "unique_id": "unique_id",
+            "timepoint_unique_id": "timepoint_unique_id",
         }
     )
 
