@@ -30,7 +30,7 @@ class Analysis:
         self.protein_sequence = self.protein_state[0].hdxms_data.protein_sequence
         self.log_k_init = np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
         self.coverage = self.calculate_coverages()
-        self.saturation = protein_state[0].hdxms_data.saturation
+        self.saturation = self.protein_state[0].hdxms_data.saturation
 
     
     def find_mini_overlap(self, peps_covering,):

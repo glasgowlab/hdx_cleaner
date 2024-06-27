@@ -35,7 +35,8 @@ def run_simulation(single_dataset, sequence, state_name, outputdir, run_index=1)
     state.set_output_model(output_model)
 
     # Initialize sampler
-    sampler = sampling.MCSampler(sys, pct_moves=20, sigma_sample_level=None)
+    #sampler = sampling.MCSampler(sys, pct_moves=20, if_sample_centroid_sigma=True, if_sample_envelope_sigma=True)
+    sampler = sampling.MCSampler(sys, pct_moves=20)
     sys.output.initialize_output_model_file(state, output_model.pf_grids)
 
     # Run sampling
