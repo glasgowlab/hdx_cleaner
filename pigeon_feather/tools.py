@@ -328,6 +328,36 @@ def average_hdxms_datas(hdxms_datas, states_subset=None):
     return hdxms_data_avg
 
 
+def average_peptides(peptides):
+    if len(set([pep.identifier for pep in peptides])) != 1:
+        raise ValueError("Peptides must be the same sequence")
+    
+    from pigeon_feather.data import Peptide
+    all_tps = [tp for pep in peptides for tp in pep.timepoints]
+    all_tps_grouped = group_by_attributes(all_tps, ["deut_time"])
+
+
+    avg_peptide = Peptide(
+        raw_sequence = peptides[0].identifier.split(" ")[-1],
+        raw_start = peptides[0].start-2,
+        raw_end = peptides[0].end,
+        protein_state = peptides[0].protein_state,
+        n_fastamides=2,
+    )
+
+    if hasattr(peptides[0], "sidechain_exchange"):
+        avg_peptide.sidechain_exchange = np.average([pep.sidechain_exchange for pep in peptides])
+
+    all_tps_grouped_sorted = sorted(all_tps_grouped.items(), key=lambda x: x[0])
+
+    for item in all_tps_grouped_sorted:
+        avg_tp = average_timepoints(item[1])
+        avg_peptide.add_timepoint(avg_tp)
+
+    return avg_peptide
+    
+
+
 def average_timepoints(tps_list):
     # check if the same state, peptide, and timepoint
     if (
@@ -913,7 +943,7 @@ def generate_bayesian_hdx_script(
     pigeon_feather_path = os.path.dirname(os.path.abspath(__file__))
     
     if making_chunks:
-        with open(f"{pigeon_feather_path}/lib/run_bayesian_hdx_template_chunks.txt", "r") as file:
+        with open(f"{pigeon_feather_path}/lib/run_bayesian_hdx_template_chunks2.txt", "r") as file:
             script_template = file.read()
     else:
         if if_original_bayesian_hdx:

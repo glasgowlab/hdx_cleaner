@@ -212,11 +212,13 @@ class Analysis:
 
         df_list_all = []      
         df_be_list_all = []  
+        df_sidechain_ex_list_all = []
         range_chunks = [(i*chunk_size+1, (i+1)*chunk_size) for i in range(chunk_num)]
 
         for run_index in range(1, run_num+1):
             df_list_i = []
             df_be_list_i = []
+            df_sidechain_ex_list_i = []
             bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith(f'{run_index}.dat') and state_name in f])
 
             for i, chunk in enumerate(range_chunks):
@@ -227,10 +229,18 @@ class Analysis:
                 else:
                     df_list_i.append(df[0].iloc[:, chunk[0]-1:chunk[1]])
                     df_be_list_i.append(df[1])
+                    if len(df) == 3:
+                        df_sidechain_ex_list_i.append(df[2])
             if df_be_list_i != []:
                 df_be_run_i = pd.concat(df_be_list_i, axis=1)
                 df_be_run_i = df_be_run_i.groupby(by=lambda x: x, axis=1).mean()
                 df_be_list_all.append(df_be_run_i)
+
+            if df_sidechain_ex_list_i != []:
+                df_sidechain_ex_run_i = pd.concat(df_sidechain_ex_list_i, axis=1)
+                df_sidechain_ex_run_i = df_sidechain_ex_run_i.groupby(by=lambda x: x, axis=1).mean()
+                df_sidechain_ex_list_all.append(df_sidechain_ex_run_i)
+
             df_run_i = pd.concat(df_list_i, axis=1)
             #df_run_i['run_index'] = run_index
             df_list_all.append(df_run_i)
@@ -240,11 +250,63 @@ class Analysis:
         
         if df_be_list_all != []:
             self.bayesian_hdx_df_be = pd.concat(df_be_list_all, axis=0)
+
+        if df_sidechain_ex_list_all != []:
+            self.bayesian_hdx_df_sidechain_ex = pd.concat(df_sidechain_ex_list_all, axis=0)
         
         self._convert_logP_to_log_kex(self.bayesian_hdx_df)
 
         # run clustering
         self.clustering_results()
+
+
+    def load_sampled_sidechain_exchange(self):
+        '''
+        Load the sampled sidechain exchange data from the bayesian hdx output files
+        '''
+
+        if not hasattr(self, 'bayesian_hdx_df_sidechain_ex'):
+            raise Exception('sidechain exchange data not found in the bayesian hdx output files')
+
+        all_peps = [pep for state in self.protein_state for pep in state.peptides]
+        bayesian_hdx_df_sidechain_ex = self.bayesian_hdx_df_sidechain_ex
+
+        avg_sidechain_exchange = np.nanmean(bayesian_hdx_df_sidechain_ex.values.flatten())
+
+        for pep in all_peps:
+            try:
+                #avg_sidechain_exchange = bayesian_hdx_df_sidechain_ex[pep.identifier].mean() # this be consider the saturation level
+                pep.sidechain_exchange = avg_sidechain_exchange
+            except Exception as e:
+                pep.sidechain_exchange = 0.0
+                print(e)
+
+    def load_sampled_back_exchange(self):
+        '''
+        overwrite the back exchange with the sampled back exchange from the bayesian analysis
+
+        :param protein_state: protein state object
+        :param ana_obj: analysis object
+        '''
+
+        if not hasattr(self, 'bayesian_hdx_df_be'):
+            raise Exception('back exchange data not found in the bayesian hdx output files')
+        
+        all_peps = [pep for state in self.protein_state for pep in state.peptides]
+        bayesian_hdx_df_be = self.bayesian_hdx_df_be
+
+        from pigeon_feather.tools import _add_max_d_to_pep
+
+        for pep in all_peps:
+            try:
+                avg_be = bayesian_hdx_df_be[pep.identifier].mean() # this be consider the saturation level
+                max_d_ratio = 1- avg_be*self.saturation
+
+                _add_max_d_to_pep(pep, max_d_theo_max_ratio=max_d_ratio, force=True)
+            except Exception as e:
+                print(e)
+
+    
 
     def clustering_results(self):
         
@@ -520,6 +582,7 @@ class BFactorPlot(object):
         pdb_file=None,
         plot_deltaG=False,
         temperature=None,
+        logP_threshold=3.0,
     ):
         """
         _summary_
@@ -548,6 +611,8 @@ class BFactorPlot(object):
             if temperature is None:
                 raise ValueError("temperature is required to convert logP to deltaG")
             self.temperature = temperature
+        
+        self.logP_threshold = logP_threshold
 
     def plot(self, out_file):
         """
@@ -570,7 +635,7 @@ class BFactorPlot(object):
             res = self.analysis_object_1.results_obj.get_residue_by_resindex(res_i)
             avg_logP, std_logP = get_res_avg_logP(res)
 
-            if std_logP > 3.0:
+            if std_logP > self.logP_threshold:
                 avg_logP = np.nan
                 continue
                 # print(res.resid, res.resname ,avg_logP, std_logP, res.clustering_results_logP, res.std_within_clusters_logP)
@@ -610,10 +675,10 @@ class BFactorPlot(object):
             # if not siginificant difference, 0.35 is the grid size
             if (
                 abs(avg_logP_1 - avg_logP_2) < max(combined_std, 0.35)
-                and combined_std <= 3.0
+                and combined_std <= self.logP_threshold
             ):
                 continue
-            elif combined_std > 3.0:
+            elif combined_std > self.logP_threshold:
                 diff_logP = np.nan
             else:
                 diff_logP = avg_logP_1 - avg_logP_2
@@ -813,8 +878,16 @@ class Bayesian_hdx_ParseOutputFile(object):
                     for m in model_string.split(" "):
                         model_list.append(int(m))
                     
-                    if hasattr(self, 'pep_idfs'):
+                    try:
                         back_exchange_list = [float(be) for be in line.split("||")[1].strip().split(" ")]
+                    except:
+                        back_exchange_list = []
+
+                    try:
+                        sidechain_exchange_list = [float(be) for be in line.split("||")[2].strip().split(" ")]
+                    except:
+                        sidechain_exchange_list = []
+
                     
                     if sort_sectors:
                         model_list = self.sort_model_by_sector(model_list)
@@ -822,10 +895,8 @@ class Bayesian_hdx_ParseOutputFile(object):
                         ml1 = model_list
                         model_list = self.models_to_protection_factors(model_list)
                         #print(score, model_list, ml1)
-                    if hasattr(self, 'pep_idfs'):
-                        best_scoring_models.append((score, model_list, back_exchange_list))
-                    else:
-                        best_scoring_models.append((score, model_list))
+                        best_scoring_models.append((score, model_list, back_exchange_list, sidechain_exchange_list))
+
                     best_scoring_models = sorted(best_scoring_models, key=lambda x: x[0])
 
         self.best_scoring_models = best_scoring_models
@@ -956,13 +1027,15 @@ class Bayesian_hdx_ParseOutputFile(object):
         df_pfs = pd.DataFrame(pfs)
 
         if hasattr(self, 'pep_idfs'):
-            bes = []
-            for i in self.best_scoring_models:
-                bes.append(np.array(i[2]))
-            
-            df_bes = pd.DataFrame(bes, columns=self.pep_idfs)
 
-            return df_pfs, df_bes
+            bes = [np.array(i[2]) for i in self.best_scoring_models]
+            sidechain_ex = [np.array(i[3]) for i in self.best_scoring_models]
+
+            df_bes = pd.DataFrame(bes, columns=self.pep_idfs) if bes[0].size !=0 else pd.DataFrame()
+            df_sidechain_ex = pd.DataFrame(sidechain_ex, columns=self.pep_idfs) if sidechain_ex[0].size !=0 else pd.DataFrame()
+
+            return df_pfs, df_bes, df_sidechain_ex
+
         
         return df_pfs
     
