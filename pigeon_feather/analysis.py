@@ -16,7 +16,10 @@ import MDAnalysis
 
 
 class Analysis:
-    def __init__(self, protein_state, temperature=293., pH=7., ):
+    def __init__(self, protein_state, temperature=None, pH=None, ):
+
+        if temperature is None or pH is None:
+            raise ValueError('temperature and pH are required')
         
         if not isinstance(protein_state, list):
             self.protein_state = [protein_state]
@@ -28,9 +31,11 @@ class Analysis:
         self.__minimize_overlap_by_adjacent_windows(initial_sliding_windows)
         self.maximum_resolution_limits = self.__find_continuous_blocks(initial_sliding_windows)
         self.protein_sequence = self.protein_state[0].hdxms_data.protein_sequence
-        self.log_k_init = np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH))
         self.coverage = self.calculate_coverages()
         self.saturation = self.protein_state[0].hdxms_data.saturation
+        self.temperature = temperature
+        self.pH = pH
+        self.log_k_init = np.log10(k_int_from_sequence(self.protein_sequence , temperature, pH, d_percentage=self.saturation*100))
 
     
     def find_mini_overlap(self, peps_covering,):
