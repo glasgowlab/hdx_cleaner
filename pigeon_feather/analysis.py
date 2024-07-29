@@ -13,6 +13,7 @@ from pigeon_feather.plot import UptakePlot
 from matplotlib.lines import Line2D
 from sklearn.metrics import mean_squared_error
 import MDAnalysis
+import warnings
 
 
 class Analysis:
@@ -264,19 +265,25 @@ class Analysis:
         # run clustering
         self.clustering_results()
 
+        # load the sampled sidechain exchange data
+        self.load_sampled_sidechain_exchange()
+
 
     def load_sampled_sidechain_exchange(self):
         '''
         Load the sampled sidechain exchange data from the bayesian hdx output files
         '''
 
-        if not hasattr(self, 'bayesian_hdx_df_sidechain_ex'):
-            raise Exception('sidechain exchange data not found in the bayesian hdx output files')
+        # if not hasattr(self, 'bayesian_hdx_df_sidechain_ex'):
+        #     warnings.warn('sidechain exchange data not found in the bayesian hdx output files')
 
-        all_peps = [pep for state in self.protein_state for pep in state.peptides]
-        bayesian_hdx_df_sidechain_ex = self.bayesian_hdx_df_sidechain_ex
+        try:
+            all_peps = [pep for state in self.protein_state for pep in state.peptides]
+            bayesian_hdx_df_sidechain_ex = self.bayesian_hdx_df_sidechain_ex
 
-        avg_sidechain_exchange = np.nanmean(bayesian_hdx_df_sidechain_ex.values.flatten())
+            avg_sidechain_exchange = np.nanmean(bayesian_hdx_df_sidechain_ex.values.flatten())
+        except:
+            avg_sidechain_exchange = 0.0
 
         for pep in all_peps:
             try:
@@ -347,7 +354,7 @@ class Analysis:
         #cleaned_data = [remove_outliers(self.bayesian_hdx_df[col]) for col in self.bayesian_hdx_df.iloc[:,v0-1:v1].columns] 
         cleaned_data = [remove_outliers(self.bayesian_hdx_df_log_kex[col]) for col in self.bayesian_hdx_df_log_kex.iloc[:,v0-1:v1].columns] 
         
-        initial_centers = np.array([np.mean(col) for col in cleaned_data if col.size !=0]).reshape(-1, 1)  
+        initial_centers = np.array([np.mean(col[:20]) for col in cleaned_data if col.size !=0]).reshape(-1, 1)  
         num_clusters = initial_centers.shape[0]
         
         # add 0 if Proline in the mini_pep
@@ -1031,15 +1038,15 @@ class Bayesian_hdx_ParseOutputFile(object):
             
         df_pfs = pd.DataFrame(pfs)
 
-        if hasattr(self, 'pep_idfs'):
+        # if hasattr(self, 'pep_idfs'):
 
-            bes = [np.array(i[2]) for i in self.best_scoring_models]
-            sidechain_ex = [np.array(i[3]) for i in self.best_scoring_models]
+        #     bes = [np.array(i[2]) for i in self.best_scoring_models]
+        #     sidechain_ex = [np.array(i[3]) for i in self.best_scoring_models]
 
-            df_bes = pd.DataFrame(bes, columns=self.pep_idfs) if bes[0].size !=0 else pd.DataFrame()
-            df_sidechain_ex = pd.DataFrame(sidechain_ex, columns=self.pep_idfs) if sidechain_ex[0].size !=0 else pd.DataFrame()
+        #     df_bes = pd.DataFrame(bes, columns=self.pep_idfs) if bes[0].size !=0 else pd.DataFrame()
+        #     df_sidechain_ex = pd.DataFrame(sidechain_ex, columns=self.pep_idfs) if sidechain_ex[0].size !=0 else pd.DataFrame()
 
-            return df_pfs, df_bes, df_sidechain_ex
+        #     return df_pfs, df_bes, df_sidechain_ex
 
         
         return df_pfs
@@ -1072,49 +1079,140 @@ def remove_outliers(data):
     return data[(data >= lower_bound) & (data <= upper_bound)]
 
 
-def check_fitted_peptide_uptake(ana_obj, hdxms_data_list, peptide_obj, if_plot=False, state_name='SIM'):
-
+def check_fitted_peptide_uptake(
+    ana_obj,
+    hdxms_data_list,
+    peptide_obj,
+    if_plot=False,
+    state_name="SIM",
+    figure=None,
+    ax=None,
+):
     pep_start = peptide_obj.start
     pep_end = peptide_obj.end
-    time_points = sorted([tp.deut_time for tp in peptide_obj.timepoints if tp.deut_time > 0 and tp.deut_time != np.inf])
-    #deut_times = np.logspace(np.log10(time_points[0]), np.log10(time_points[-1]), 1000)
-    
+
+    time_points = sorted(
+        [
+            tp.deut_time
+            for tp in peptide_obj.timepoints
+            if tp.deut_time > 0 and tp.deut_time != np.inf
+        ]
+    )
+    # time_points = np.logspace(1, 5, 1000)
+    # deut_times = np.logspace(np.log10(time_points[0]), np.log10(time_points[-1]), 1000)
+
     fitted_uptakes = []
+    fitted_uptakes_lower = []
+    fitted_uptakes_upper = []
 
     for deut_time in time_points:
         peptide_incorporation = 0
-        mini_peps_inrange = [mini_pep for mini_pep in ana_obj.results_obj.mini_peps if mini_pep.start >= pep_start and mini_pep.end <= pep_end]
+        mini_peps_inrange = [
+            mini_pep
+            for mini_pep in ana_obj.results_obj.mini_peps
+            if mini_pep.start >= pep_start and mini_pep.end <= pep_end
+        ]
 
-        mini_cover_resids = set([res.resid for mini_pep in mini_peps_inrange for res in mini_pep.residues])
+        mini_cover_resids = set(
+            [res.resid for mini_pep in mini_peps_inrange for res in mini_pep.residues]
+        )
 
-        if set(range(pep_start, pep_end+1)) != mini_cover_resids:
-            raise ValueError('mini_peps not cover all residues')
-        
+        if set(range(pep_start, pep_end + 1)) != mini_cover_resids:
+            raise ValueError("mini_peps not cover all residues")
+
         else:
-            log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
-            peptide_incorporation = 0
-            for log_kex in log_kex_inrange:
-                peptide_incorporation += calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)*ana_obj.saturation
+            log_kex_inrange = [
+                ki
+                for mini_pep in mini_peps_inrange
+                for ki in mini_pep.clustering_results_log_kex
+                if not np.isinf(ki) and not np.isnan(ki)
+            ]
+
+            log_kex_std_inrange = [
+                mini_pep.std_within_clusters_log_kex[i]
+                for mini_pep in mini_peps_inrange
+                for i, ki in enumerate(mini_pep.clustering_results_log_kex)
+                if not np.isinf(ki) and not np.isnan(ki)
+            ]
+
+            peptide_incorporation = sum(
+                calculate_simple_deuterium_incorporation(-1 * log_kex, deut_time)
+                + peptide_obj.sidechain_exchange
+                for log_kex in log_kex_inrange
+            )
+            # fitted_uptakes.append(peptide_incorporation*ana_obj.saturation)
             fitted_uptakes.append(peptide_incorporation)
-    
-    
+
+            peptide_incorporation_lower = sum(
+                calculate_simple_deuterium_incorporation(
+                    -1 * log_kex - log_kex_std_inrange[i], deut_time
+                )
+                + peptide_obj.sidechain_exchange
+                for i, log_kex in enumerate(log_kex_inrange)
+            )
+            # fitted_uptakes_lower.append(peptide_incorporation_lower*ana_obj.saturation)
+            fitted_uptakes_lower.append(peptide_incorporation_lower)
+
+            peptide_incorporation_upper = sum(
+                calculate_simple_deuterium_incorporation(
+                    -1 * log_kex + log_kex_std_inrange[i], deut_time
+                )
+                + peptide_obj.sidechain_exchange
+                for i, log_kex in enumerate(log_kex_inrange)
+            )
+            # fitted_uptakes_upper.append(peptide_incorporation_upper*ana_obj.saturation)
+            fitted_uptakes_upper.append(peptide_incorporation_upper)
+
     try:
-        full_d_scaler = peptide_obj.get_timepoint(np.inf).num_d/peptide_obj.theo_max_d
+        full_d_scaler = peptide_obj.max_d / peptide_obj.theo_max_d
+        # print(full_d_scaler)
     except:
-        full_d_scaler = 1 # for simulated data
-    fitted_uptakes = np.array(fitted_uptakes)*full_d_scaler
+        full_d_scaler = 1  # for simulated data
+
+    fitted_uptakes = np.array(fitted_uptakes) * full_d_scaler * ana_obj.saturation
+    fitted_uptakes_lower = (
+        np.array(fitted_uptakes_lower) * full_d_scaler * ana_obj.saturation
+    )
+    fitted_uptakes_upper = (
+        np.array(fitted_uptakes_upper) * full_d_scaler * ana_obj.saturation
+    )
 
     exp_uptakes = np.array([peptide_obj.get_timepoint(tp).num_d for tp in time_points])
-    rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes)) / (pep_end - pep_start + 1)
+    rmse = np.sqrt(mean_squared_error(exp_uptakes, fitted_uptakes)) / (
+        pep_end - pep_start + 1
+    )
 
     if if_plot:
-        uptake = UptakePlot(hdxms_data_list,  peptide_obj.identifier, states_subset=[state_name], if_plot_fit=False)
-        uptake.uptakeplot.axes[0].plot(time_points, fitted_uptakes, label='model', color='red', linestyle='-')
-        
-        legend_elements = [Line2D([0], [0], color='black', lw=4, linestyle='-', label='exp'),
-                           Line2D([0], [0], color='red', lw=4, linestyle='-', label='model')]
+        uptake = UptakePlot(
+            hdxms_data_list,
+            peptide_obj.identifier,
+            states_subset=[state_name],
+            if_plot_fit=False,
+            figure=figure,
+            ax=ax,
+        )
+        # uptake.uptakeplot.axes[0].plot(time_points, fitted_uptakes, label='model', color='red', linestyle='-')
+        ax.plot(
+            time_points,
+            fitted_uptakes,
+            label="model",
+            color="g",
+            linestyle="-",
+            marker="s",
+            markersize=15,
+        )
 
-        uptake.uptakeplot.axes[0].legend(handles=legend_elements, loc='lower right')
+        ax.fill_between(
+            time_points,
+            fitted_uptakes_lower,
+            fitted_uptakes_upper,
+            color="g",
+            alpha=0.1,
+        )
+        # legend_elements = [Line2D([0], [0], color='black', lw=4, linestyle='-', label='exp'),
+        #                    Line2D([0], [0], color='red', lw=4, linestyle='-', label='model')]
+
+        # uptake.uptakeplot.axes[0].legend(handles=legend_elements, loc='lower right')
 
         return rmse, uptake.uptakeplot
 
@@ -1139,7 +1237,13 @@ def check_fitted_isotope_envelope(ana_obj, timepont_obj, if_plot=False):
         raise ValueError('mini_peps not cover all residues')
     
     else:
-        log_kex_inrange = [ki for mini_pep in mini_peps_inrange for ki in mini_pep.clustering_results_log_kex]
+        log_kex_inrange = [
+            ki
+            for mini_pep in mini_peps_inrange
+            for ki in mini_pep.clustering_results_log_kex
+            if not np.isinf(ki) and not np.isnan(ki)
+        ]
+
         tp_raw_deut = []
         for log_kex in log_kex_inrange:
             tp_raw_deut.append(calculate_simple_deuterium_incorporation(-1*log_kex, deut_time)*ana_obj.saturation)

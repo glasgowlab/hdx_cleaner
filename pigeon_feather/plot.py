@@ -11,6 +11,7 @@ import pandas as pd
 import seaborn as sns
 
 from pigeon_feather.data import *
+from pigeon_feather.tools import get_num_d_from_iso
 
 
 font = {"family": "Arial", "weight": "normal", "size": 36}
@@ -19,7 +20,6 @@ plt.rc("font", **font)
 plt.rc("axes", **axes)
 plt.rc("lines", lw=3)
 colors = ["k", "red", "blue", "purple", "gray", "orange", "yellow", "green", "brown"]
-
 
 
 class UptakePlot:
@@ -37,7 +37,7 @@ class UptakePlot:
     ):
         """
         hdxms_datas: list of class HDXMSData objects
-        
+
         :param hdxms_datas: list of HDXMSData objects
         :param identifier: peptide identifier
         :param states_subset: list of states to plot
@@ -45,7 +45,7 @@ class UptakePlot:
         :param if_plot_fit: if True, plot the fit line
         :param figure: figure object
         :param ax: axis object
-        
+
         :ivar hdxms_datas_df: pandas DataFrame of the HDX-MS data of the peptide
         """
         self.hdxms_datas = hdxms_datas
@@ -62,10 +62,8 @@ class UptakePlot:
         # self.title = identifier
         self.uptakeplot = self.make_uptakeplot()
 
-
-
     def make_uptakeplot(self):
-        'make a uptakeplot for a peptide'
+        "make a uptakeplot for a peptide"
         plt.rcParams["legend.fontsize"] = 22
 
         if self.figure is None and self.ax is None:
@@ -74,7 +72,7 @@ class UptakePlot:
         else:
             figure = self.figure
             ax = self.ax
-            
+
         scatter_shapes = [
             "o",
             "v",
@@ -92,20 +90,19 @@ class UptakePlot:
             "X",
         ]
 
-        sns.lineplot(
-            data=self.hdxms_datas_df,
+        sns.scatterplot(
+            data=self.hdxms_datas_df[self.hdxms_datas_df["time"] != 0],
             x="time",
             y="deut",
             hue="state",
-            errorbar="sd",
-            err_style="bars",
-            marker="o",
-            linestyle=" ",
-            markersize=18,
+            style="data_set_index",
             alpha=1.0,
             ax=ax,
             palette=self.color_dict,
+            s=600,
+            markers={1: "o", 2: "s", 3: "^", 4: "P", 5: "X", 6: "H", 7: "v"},
         )
+
 
         # Plot the fit
         if self.if_plot_fit:
@@ -122,7 +119,8 @@ class UptakePlot:
                         if tp.deut_time != np.inf and tp.deut_time != 0
                     ]
                     y_pred = [
-                        tp.num_d
+                        #tp.num_d
+                        get_num_d_from_iso(tp)/(avg_peptide.max_d / avg_peptide.theo_max_d)
                         for tp in avg_peptide.timepoints
                         if tp.deut_time != np.inf and tp.deut_time != 0
                     ]
@@ -130,23 +128,18 @@ class UptakePlot:
                     trialT, y_pred, "-", color=self.color_dict[state_name], alpha=0.5
                 )
         else:
-            for state_name in self.hdxms_datas_df.state.unique():
-                avg_peptide = self.get_average_peptide(state_name)
+            sns.lineplot(
+            data=self.hdxms_datas_df[self.hdxms_datas_df["time"] != 0],
+            x="time",
+            y="deut",
+            hue="state",
+            alpha=0.5,
+            marker=None,
+            ax=ax,
+            palette=self.color_dict,
+            estimator="mean",
+            )            
 
-                # raw data, no fit
-                trialT = [
-                    tp.deut_time
-                    for tp in avg_peptide.timepoints
-                    if tp.deut_time != np.inf and tp.deut_time != 0
-                ]
-                y_pred = [
-                    tp.num_d
-                    for tp in avg_peptide.timepoints
-                    if tp.deut_time != np.inf and tp.deut_time != 0
-                ]
-                ax.plot(
-                    trialT, y_pred, "-", color=self.color_dict[state_name], alpha=0.5
-                )
 
         # set up the plot
         ax.set_ylabel("# Deuterons")
@@ -157,17 +150,17 @@ class UptakePlot:
         ax.set_ylim(
             min(self.hdxms_datas_df["deut"]) - 1, max(self.hdxms_datas_df["deut"]) + 1
         )
-        #ax.set_xlim(ax.get_xlim()[0]/10, ax.get_xlim()[1] * 10)
+        # ax.set_xlim(ax.get_xlim()[0]/10, ax.get_xlim()[1] * 10)
         xlim = ax.get_xlim()
-        left_limit = 10**np.floor(np.log10(xlim[0]))
-        right_limit = 10**np.ceil(np.log10(xlim[1]))
+        left_limit = 10 ** np.floor(np.log10(xlim[0]))
+        right_limit = 10 ** np.ceil(np.log10(xlim[1]))
         ax.set_xlim(left_limit, right_limit)
         # ax.set_ylim(-0.3, avg_peptide.max_d*1.1)
         # ax.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
         ax.legend()
 
         ax.set_title(self.identifier)
-        plt.subplots_adjust(bottom=0.2) 
+        plt.subplots_adjust(bottom=0.2)
         plt.close()
 
         return figure
@@ -190,36 +183,38 @@ class UptakePlot:
 
                 if peptide is not None:
                     if self.exp_only:
-                        timepoint_objs = [tp for tp in peptide.timepoints if tp.note is None]
+                        timepoint_objs = [
+                            tp for tp in peptide.timepoints if tp.note is None
+                        ]
                     else:
-                        timepoint_objs = [tp for tp in peptide.timepoints]
+                        timepoint_objs = [
+                            tp for tp in peptide.timepoints if tp.deut_time != np.inf
+                        ]
 
                     peptide_df_i = pd.DataFrame(
                         {
                             "time": [tp.deut_time for tp in timepoint_objs],
-                            "deut": [tp.num_d for tp in timepoint_objs],
-                            "state": state.state_name,
-                            "charge_state": [
-                                tp.charge_state for tp in timepoint_objs
+                            # "deut": [tp.num_d for tp in timepoint_objs],
+                            "deut": [
+                                get_num_d_from_iso(tp) for tp in timepoint_objs
                             ],
+                            "state": state.state_name,
+                            "charge_state": [tp.charge_state for tp in timepoint_objs],
                         }
                     )
 
                     if self.if_d_percent:
-                        peptide_df_i["deut"] = [
-                            tp.d_percent for tp in timepoint_objs
-                        ]
+                        peptide_df_i["deut"] = [tp.d_percent for tp in timepoint_objs]
 
                     hdxms_data_df = pd.concat(
                         [hdxms_data_df, peptide_df_i], ignore_index=True
                     )
 
-            hdxms_data_df["data_set_index"] = hdxms_data_index
+            hdxms_data_df["data_set_index"] = hdxms_data_index + 1
             hdxms_datas_df = pd.concat(
                 [hdxms_datas_df, hdxms_data_df], ignore_index=True
             )
         return hdxms_datas_df
-
 
     @hdxms_datas_df.setter
     def hdxms_datas_df(self, value):
@@ -232,7 +227,7 @@ class UptakePlot:
         return deut_std
 
     def get_average_peptide(self, state_name):
-        'return an averaged peptide for a state'
+        "return an averaged peptide for a state"
         grouped_df = self.hdxms_datas_df.groupby("state")
         group = grouped_df.get_group(state_name)
 
@@ -241,13 +236,18 @@ class UptakePlot:
         group_std = final_group.std(numeric_only=True).reset_index()
 
         idf_start, idf_end = re.match(r"(-?\d+)-(-?\d+)", self.identifier).group(1, 2)
-        states = [state for data in self.hdxms_datas for state in data.states if state.state_name == state_name]
+        states = [
+            state
+            for data in self.hdxms_datas
+            for state in data.states
+            if state.state_name == state_name
+        ]
 
         peptide = Peptide(
             self.sequence,
             int(idf_start),
             int(idf_end),
-            #f"averaged peptide: {state_name}",
+            # f"averaged peptide: {state_name}",
             states[0],
             n_fastamides=self.hdxms_datas[0].n_fastamides,
         )
@@ -263,7 +263,7 @@ class UptakePlot:
         return peptide
 
     def make_title(self):
-        'make a title for the plot'
+        "make a title for the plot"
         for hdxms_data in self.hdxms_datas:
             for state in hdxms_data.states:
                 try:
@@ -275,7 +275,7 @@ class UptakePlot:
         return f"Missing data for {self.sequence}"
 
     def make_color_dict(self, color_dict=None):
-        'make a color dictionary for the states in the plot'
+        "make a color dictionary for the states in the plot"
         if color_dict is None:
             colors = [
                 "k",
@@ -303,7 +303,7 @@ class UptakePlot:
                 state_names.sort()
             else:
                 state_names = self.states_subset
-            
+
             for i, state_name in enumerate(state_names):
                 color_dict[state_name] = colors[i]
         return color_dict

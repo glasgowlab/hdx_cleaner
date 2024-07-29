@@ -16,7 +16,6 @@ def run_simulation(single_dataset, sequence, state_name, outputdir, run_index=1)
 
     # Initialize model and system
     num_exp_bins = 40
-    nsteps = 1000
     sys = system.System(output_dir=outputdir, noclobber=False)
     mol = sys.add_macromolecule(sequence, state_name, initialize_apo=False)
 
@@ -42,12 +41,24 @@ def run_simulation(single_dataset, sequence, state_name, outputdir, run_index=1)
     # Run sampling
     annealing_steps = 100 
     for i in range(5):
+        # centroid only
+        state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModelIsotope(state, truncated=False, w_envelope=0.0, w_centroid=1.0))
+        newscore = state.calculate_peptides_score(state.get_all_peptides(), state.output_model.get_current_model())
+        state.set_score(newscore)
         sampler.run(annealing_steps, 50, find_temperature=False)
         sampler.run(annealing_steps, 20, find_temperature=False)
-        sampler.run(annealing_steps, 10, find_temperature=False)        
-        sampler.run(annealing_steps, 5, find_temperature=False)
-        sampler.run(nsteps, 2, write=True, find_temperature=True,acceptance_range=(0.0, 0.1))
-        sampler.run(500, 0.0, write=True, find_temperature=False)
+        sampler.run(annealing_steps, 10, find_temperature=False)
+        sampler.run(annealing_steps, 2,find_temperature=False)
+
+        # centroid plus envelope
+        state.scoring_function = scoring.ScoringFunction(scoring.GaussianNoiseModelIsotope(state, truncated=False, envelope_sigma=0.3, w_envelope=1.0, w_centroid=1.0))
+        newscore = state.calculate_peptides_score(state.get_all_peptides(), state.output_model.get_current_model())
+        state.set_score(newscore)
+        sampler.run(annealing_steps*2, 50, find_temperature=True, acceptance_range=(0.4, 0.8))
+        sampler.run(annealing_steps*2, 2, find_temperature=True, acceptance_range=(0.2, 0.4))
+        sampler.run(annealing_steps, sampler.temperature, write=True, find_temperature=True, acceptance_range=(0.1, 0.3))
+        sampler.run(500, sampler.temperature, write=True, find_temperature=False)
+        sampler.run(500, 0, write=True, find_temperature=False)
 
 def main():
     # Define protein state and sequence
@@ -87,7 +98,7 @@ def main():
         merged_dataset_90.peptides = random.sample(merged_dataset.peptides, int(0.9*len(merged_dataset.peptides)))
         
         # Split dataset into chunks
-        range_chunks, chunked_datasets = data.spilt_dataset_into_chunks(merged_dataset_90, chunk_size=100)
+        range_chunks, chunked_datasets = data.spilt_dataset_into_chunks(merged_dataset_90, chunk_size={chunk_size})
 
         # Prepare a list of arguments for each task
         tasks = [(chunked_datasets[i], sequence, f'{{state_name}}_chunk_{{i}}', outputdir, run_index) for i in range(len(chunked_datasets))]

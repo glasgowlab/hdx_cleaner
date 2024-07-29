@@ -19,6 +19,8 @@ from pigeon_feather.tools import (
     fit_func,
     pdb2seq,
     subtract_peptides,
+    _add_max_d_to_pep,
+    normlize
 )
 import pigeon_feather.spectra as spectra
 from pigeon_feather.hxio import (
@@ -978,7 +980,7 @@ class ResidueCompare:
 
 
 class SimulatedData:
-    def __init__(self, length=100, seed=42, noise_level=0):
+    def __init__(self, length=100, seed=42, noise_level=0, saturation=1.0, random_backexchange=False):
         '''
         A class to generate simulated HDX-MS data.
 
@@ -996,6 +998,8 @@ class SimulatedData:
         self.timepoints = np.insert(np.logspace(1, 12, 20), 0, 0)
         # self.timepoints = np.insert(self.timepoints, -1, 1e12)
         self.noise_level = noise_level
+        self.saturation = saturation
+        self.random_backexchange = random_backexchange
 
     def gen_seq(
         self,
@@ -1031,7 +1035,7 @@ class SimulatedData:
     ):
         'generate a random logP values for each residue in the sequence'
         
-        logP = np.array([random.uniform(2.0, 10.0) for i in range(self.length)])
+        logP = np.array([random.uniform(0.0, 14.0) for i in range(self.length)])
         # Proline residues are not exchangeable
         for i in range(self.length):
             if self.sequence[i] == "P":
@@ -1128,7 +1132,7 @@ class SimulatedData:
 
     def convert_to_hdxms_data(self):
         'convert the simulated data to a HDXMSData object'
-        hdxms_data = HDXMSData("simulated_data", protein_sequence=self.sequence)
+        hdxms_data = HDXMSData("simulated_data", protein_sequence=self.sequence, saturation=self.saturation)
         protein_state = ProteinState("SIM", hdxms_data=hdxms_data)
         hdxms_data.add_state(protein_state)
 
@@ -1140,12 +1144,20 @@ class SimulatedData:
             end = start + len(peptide) - 1
 
             peptide_obj = Peptide(peptide, start, end, protein_state, n_fastamides=2)
+
+            if self.random_backexchange:
+                random_back_exchange = random.uniform(0.0, 0.4)
+                _add_max_d_to_pep(peptide_obj,max_d=(1-random_back_exchange)*peptide_obj.theo_max_d)
+            else:
+                random_back_exchange = 0.0
+                
             try:
                 protein_state.add_peptide(peptide_obj)
                 for tp_i, tp in enumerate(self.timepoints):
                     tp_raw_deut = self.incorporations[
                         peptide_obj.start - 1 : peptide_obj.end
                     ][:, tp_i]
+                    tp_raw_deut = tp_raw_deut * (1 - random_back_exchange) * self.saturation
                     pep_incorp = sum(tp_raw_deut)
                     # random_stddev = peptide_obj.theo_max_d * self.noise_level * random.uniform(-1, 1)
                     random_stddev = 0
@@ -1169,6 +1181,7 @@ class SimulatedData:
                         ]
                     )
                     tp_obj.isotope_envelope = isotope_envelope + isotope_noise
+                    tp_obj.isotope_envelope = normlize(tp_obj.isotope_envelope)
                     # tp_obj.isotope_envelope = isotope_envelope
 
                     peptide_obj.add_timepoint(tp_obj)

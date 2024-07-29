@@ -2,6 +2,7 @@ import numpy as np
 import os
 from collections import defaultdict
 import re
+import math
 
 def refine_data(hdxms_data_list, std_threshold=1.0):
     """
@@ -945,6 +946,7 @@ def generate_bayesian_hdx_script(
     if making_chunks:
         with open(f"{pigeon_feather_path}/lib/run_bayesian_hdx_template_chunks2.txt", "r") as file:
             script_template = file.read()
+            chunk_size = optimal_chunks(len(protein_sequence))[1]
     else:
         if if_original_bayesian_hdx:
             with open(f"{pigeon_feather_path}/lib/run_original_bayesian_hdx_template.txt", "r") as file:
@@ -969,7 +971,8 @@ def generate_bayesian_hdx_script(
             pH=pH,
             temperature=temperature,
             saturation=saturation,
-            rerun_num=rerun_num
+            rerun_num=rerun_num,
+            chunk_size=chunk_size
         )
     else:
         # Generate the script using the template
@@ -1157,3 +1160,30 @@ def get_if_exposed(pdb_file,):
         
     return np.array(if_exposed)
 
+
+def optimal_chunks(total_size):
+    '''
+    calculate the optimal number of chunks and chunk size for a given total size
+    '''
+    residual = []
+    num_chunks = []
+    chunk_size = []
+
+    for i in range(80, 121, 10): 
+        num = math.ceil(total_size / i)
+        res = num * i - total_size
+
+        if res < 0:
+            continue
+
+        num_chunks.append(num)
+        chunk_size.append(i)
+        residual.append(res)
+    
+    # Find the best chunk size with the minimum number of chunks and least residual
+    min_residual = min(residual)
+    best_indices = [i for i, x in enumerate(residual) if x == min_residual]
+    min_chunks = min([num_chunks[i] for i in best_indices])
+    best_index = num_chunks.index(min_chunks)
+    
+    return num_chunks[best_index], chunk_size[best_index]

@@ -384,14 +384,17 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                 elif tp.deut_time == 0:
                     # csv_name = f'Non-D-1-z{tp.charge_state}.csv'
                     # csv_file_path = os.path.join(pep_sub_folder, csv_name)
-                    csv_file_path = glob(
-                        f"{pep_sub_folder}/Non-D-*-z{tp.charge_state}.csv"
-                    )[0]
+                    try:
+                        csv_file_path = glob(
+                            f"{pep_sub_folder}/Non-D-*-z{tp.charge_state}.csv"
+                        )[0]
+                    except:
+                        raise ValueError(f"Error loading raw MS data for {peptide.identifier} at {tp.deut_time}s, charge {tp.charge_state} at: {pep_sub_folder}")
 
-                elif tp.deut_time == 100000000:
-                    csv_file_path = glob(
-                        f"{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv"
-                    )[0]
+                # elif tp.deut_time == 100000000:
+                #     csv_file_path = glob(
+                #         f"{pep_sub_folder}/Full-D-*-z{tp.charge_state}.csv"
+                #     )[0]
 
                 else:
                     csv_name = f"{int(tp.deut_time)}s-1-z{tp.charge_state}.csv"
@@ -399,8 +402,10 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
                 try:
                     df = tp.load_raw_ms_csv(csv_file_path)
                 except:
-                    print(peptide.identifier, tp.deut_time, tp.charge_state)
-                    print(csv_file_path)
+                    # print(peptide.identifier, tp.deut_time, tp.charge_state)
+                    # print(csv_file_path)
+                    raise Warning(f"Error loading raw MS data for {peptide.identifier} at {tp.deut_time}s, charge {tp.charge_state}: {csv_file_path}")
+
 
         bad_timepoints = [
             tp
