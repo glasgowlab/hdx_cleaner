@@ -1,5 +1,9 @@
+import warnings
+warnings.filterwarnings("ignore")
 import pandas as pd
 pd.options.mode.chained_assignment = None
+import matplotlib
+from matplotlib import rcParams
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
@@ -11,13 +15,34 @@ import os
 
 RTcutoff = 0.5
 MZcutoff = 0.1
+score_floor = 0
 score_threshold = 150
 ppm_threshold = 7
+fit = 'inv'
 maxfev = 800
 plots = 'csvplots'
 overlap_method = 'select'
 skip_res = 2
+select_score = 0
+ov_threshold = 0.8
 ymin=0.9
+ylim=30
+
+xmax=1e6
+ymax=1e6
+
+# COLUMN LABELS
+
+rtlabel = 'Rt(min)'
+scorelabel = 'Score'
+zlabel = 'z'
+mzlabel = 'Meas. M/z'
+mrlabel = 'Meas. Mr'
+seqlabel = 'Sequence'
+rangelabel = 'Range'
+startlabel = 'Start'
+endlabel = 'End'
+ppmlabel = 'Dev.(ppm)'
 
 # HELPER FNS
 
@@ -28,33 +53,68 @@ def inthelper(n):
         return int(n.strip())
     return int(n)
 
-def invfn(x, a, b, c):
-    return c + a / (x - b)
+def fitfn(x, a, b, c):
+    if fit == 'inv':
+        return c + a / (x - b)
+    else:
+        return c + a * x + b * (x ** 2)
 
 def formatfill(data):
-    if 0 in data['Score'].values:
-        return (len(data), np.mean(data['Score']), 100 * data['Score'].value_counts()[0] / len(data))
-    return (len(data), np.mean(data['Score']), 0.)
+    if 0 in data[scorelabel].values:
+        return (len(data), np.mean(data[scorelabel]), 100 * data[scorelabel].value_counts()[0] / len(data))
+    return (len(data), np.mean(data[scorelabel]), 0.)
+
 def redflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical and nonoverlapping
-    RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
-    #MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
-    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff) | (abs(topscores['Meas. Mr'].apply(float) - float(r['Meas. Mr'])) < MZcutoff)
-    notsame = (topscores['Sequence'] != r['Sequence'])
-    nonoverlapping = (topscores['Start'].apply(int) + skip_res > int(r['End'])) | (int(r['Start']) + skip_res > topscores['End'].apply(int))
+    RTflag = (abs(topscores[rtlabel].apply(float) - float(r[rtlabel])) < RTcutoff)
+    MZflag = (abs(topscores[mzlabel].apply(float) - float(r[mzlabel])) < MZcutoff) | (abs(topscores[mrlabel].apply(float) - float(r[mrlabel])) < MZcutoff)
+    notsame = (topscores[seqlabel] != r[seqlabel])
+    nonoverlapping = (topscores[startlabel].apply(int) + skip_res > int(r[endlabel])) | (int(r[startlabel]) + skip_res > topscores[endlabel].apply(int))
     return RTflag & MZflag & notsame & nonoverlapping
 
 def yellowflag(topscores, r):
     # return true if they're closer in RT and mass than the cutoffs and if they're nonidentical but overlapping
-    RTflag = (abs(topscores['Rt(min)'].apply(float) - float(r['Rt(min)'])) < RTcutoff)
-    #MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff)
-    MZflag = (abs(topscores['Meas. M/z'].apply(float) - float(r['Meas. M/z'])) < MZcutoff) | (abs(topscores['Meas. Mr'].apply(float) - float(r['Meas. Mr'])) < MZcutoff)
-    notsame = (topscores['Sequence'] != r['Sequence'])
-    overlapping = (topscores['Start'].apply(int) + skip_res <= int(r['End'])) & (int(r['Start']) + skip_res <= topscores['End'].apply(int))
+    RTflag = (abs(topscores[rtlabel].apply(float) - float(r[rtlabel])) < RTcutoff)
+    MZflag = (abs(topscores[mzlabel].apply(float) - float(r[mzlabel])) < MZcutoff) | (abs(topscores[mrlabel].apply(float) - float(r[mrlabel])) < MZcutoff)
+    notsame = (topscores[seqlabel] != r[seqlabel])
+    overlapping = (topscores[startlabel].apply(int) + skip_res <= int(r[endlabel])) & (int(r[startlabel]) + skip_res <= topscores[endlabel].apply(int))
     return RTflag & MZflag & notsame & overlapping
 
+def scorehist(data, title, path):
+    figure, (ax1) = plt.subplots(1, 1, figsize=(8, 8))
+    plt.xlabel(scorelabel)
+    plt.ylabel('n')
+    plt.ylim(ymin, ymax)
+    plt.title(title)
+    plt.hist(data[scorelabel], log=True, bins=100, range=[0, xmax])
+    #print('% 0: ' + str(100 * data[scorelabel].value_counts()[0] / len(data)))
+    plt.tight_layout()
+    plt.savefig(path)
+
+def mzscatter(data, path, popt=False):
+    rcParams['font.sans-serif'][7] = 'DejaVu Sans'
+    rcParams['font.sans-serif'][0] = 'Arial'
+    # rcParams['mathtext.fontset'] = 'Arial'
+    # plt.rcParams['text.usetex'] = True
+
+    afont = {'size': 6}
+    matplotlib.rc('font', **afont)
+
+    pt = 72
+    figure, (ax1) = plt.subplots(1, 1, figsize=(109.7 / pt, 109.7 / pt))
+    if type(popt) != bool:
+        plt.plot(np.sort(data[mzlabel].apply(float)), fitfn(np.sort(data[mzlabel].apply(float)), *popt), linewidth=0.5)
+    plt.scatter(data[mzlabel].apply(float), data[ppmlabel].apply(float), c=data[scorelabel]+1,
+                norm=colors.LogNorm(vmin=1, vmax=xmax), s=50/pt, linewidth=0.05)
+    plt.colorbar(label=scorelabel)
+    plt.xlabel('$\it{{m}}$/$\it{{z}}$ (D/e)')
+    plt.ylabel('mass error (ppm)')
+    plt.ylim(-ylim, ylim)
+    plt.tight_layout()
+    plt.savefig(path)
 
 def parse_args():
+
     # CMD LINE ARGS CODE
 
     parser = argparse.ArgumentParser(description='Biotools CSV cleaner: pool csvs and disambiguate duplicates')
@@ -62,9 +122,11 @@ def parse_args():
     parser.add_argument('--o', '--out', dest='out', help="path to output csv")
     parser.add_argument('--p', '--plots', dest='plots', help="directory for output plots")
     parser.add_argument('--ov', '--overlap', dest='overlap', help="how to treat overlapping duplicates: keep/drop/select?")
+    parser.add_argument('--sf', '--scorefloor', dest='scorefloor', type=float, help='Score floor for assignments')
     parser.add_argument('--r', '--rangeslist', dest='rangeslist', help="destination for rangeslist")
     parser.add_argument('--RTC', dest='RTC', type=float, help='RT cutoff for duplicates')
     parser.add_argument('--MZC', dest='MZC', type=float, help='M/Z cutoff for duplicates')
+    parser.add_argument('--fit', dest='fit', help='type of curve fit: inv, or quad for quadratic')
     parser.add_argument('--scoreC', dest='scoreC', type=float, help='Score threshold for initial curve fit')
     parser.add_argument('--ppmC', dest='ppmC', type=float, help='ppm cutoff after curve fit')
     parser.add_argument('--maxfev', dest='maxfev', type=int, help='maxfev for curve fit')
@@ -73,8 +135,10 @@ def parse_args():
 
     if args.RTC: RTcutoff = args.RTC
     if args.MZC: MZcutoff = args.MZC
+    if args.scorefloor: score_floor = args.scorefloor
     if args.scoreC: score_threshold = args.scoreC
     if args.ppmC: ppm_threshold = args.ppmC
+    if args.fit: fit = args.fit
     if args.maxfev: maxfev = args.maxfev
     if args.plots: plots = args.plots
     if args.overlap: overlap_method = args.overlap
@@ -84,8 +148,6 @@ def parse_args():
 
 def main():
     args = parse_args()
-    
-    
     # MAKE PLOTS DIRECTORY
 
     if not os.path.isdir(plots):
@@ -97,179 +159,121 @@ def main():
     for table in args.table:
         data = pd.concat([data, pd.read_csv(table)])
 
-    #export data df as csv  
-    #data.to_csv('og_data.csv', index=False)
+    data = data[data[mzlabel] != '-']
+    data = data[data[ppmlabel] != '-']
+    data.dropna(subset=[seqlabel], inplace=True)
+    data[scorelabel].fillna(0, inplace=True)
+    data[scorelabel] = data[scorelabel].apply(inthelper)
 
-    data = data[data['Meas. M/z'] != '-']
-    data = data[data['Dev.(ppm)'] != '-']
-    data.dropna(subset=['Sequence'], inplace=True)
-    data['Score'].fillna(0, inplace=True)
-    data['Score'] = data['Score'].apply(inthelper)
+    #data = data.loc[data['Tree hierarchy'] != 'no peak']
+    data.sort_values(scorelabel, inplace=True, ascending=False)
 
-    # data = data.loc[data['Meas. M/z'] != '-']
-    # data['Score'] = data['Score'].apply(int)
-
-    data = data.loc[data['Tree hierarchy'] != 'no peak']
-    data.sort_values('Score', inplace=True, ascending=False)
     print('pooled: ' + str(data.shape))
-    print('mean score: ' + str(np.mean(data['Score'])))
+    print('mean score: ' + str(np.mean(data[scorelabel])))
+    print('% 0: ' + str(100 * data[scorelabel].value_counts()[0] / len(data)))
+    print()
+
     ymax=len(data)
-    xmax = max(data['Score'])
+    xmax = max(data[scorelabel])
 
-    #export data df as csv
-    data.to_csv('test.csv')
-
-    # TEMP scatterplot of full dataset
-
-    # def floathelper(n):
-    #     if n == '-':
-    #         return 0
-    #     return float(n.strip())
-    # figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-    # data['MSMS Cov.(%)'] = data['MSMS Cov.(%)'].apply(floathelper)
-    # plt.yscale("log")
-    # plt.scatter(data['MSMS Cov.(%)'], data['Score'].apply(float)+1)
-    # plt.savefig(plots + '/scatter-score-coverage.png')
-
-
-
-
-    # PLOTTING SECTION
+    plt.rc('font', size=25)
 
     # hist of initial score distribution
-    figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-    plt.xlabel('score')
-    plt.ylabel('n')
-    plt.ylim(ymin,ymax)
-    plt.title("pooled: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(data))
-    plt.hist(data['Score'], log=True, bins=100, range=[0,xmax])
-    print('% 0: ' + str(100 * data['Score'].value_counts()[0] / len(data)))
-    plt.savefig(plots + '/hist-scores-all.png')
+
+    scorehist(data, "pooled: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(data), plots + '/hist-scores-all.pdf')
 
     # scatterplot of full dataset
-    figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
 
-    plt.scatter(data['Meas. M/z'].apply(float), data['Dev.(ppm)'].apply(float), c=data['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-    plt.colorbar(label='Score')
-    plt.xlabel('M/z')
-    plt.ylabel('deviation (ppm)')
-    plt.ylim(-30,30)
-    plt.savefig(plots + '/scatter-30ppm.png')
-
-    print()
+    mzscatter(data, plots + '/scatter-30ppm.pdf')
 
     # threshold scores
-    hsdata = data.loc[data['Score'] > score_threshold]
+    hsdata = data.loc[data[scorelabel] > score_threshold]
 
     # hist of thresholded score distribution
-    figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-    plt.xlabel('score')
-    plt.ylabel('n')
-    plt.ylim(ymin,ymax)
-    plt.title("high scores: %d\n mean score: %1.5f" %(len(hsdata), np.mean(hsdata['Score'])))
-    plt.hist(hsdata['Score'],log=True, bins=100, range=[0,xmax])
+
+    scorehist(hsdata, "high scores: %d\n mean score: %1.5f" %(len(hsdata), np.mean(hsdata[scorelabel])), plots + '/hist-scores-cut.pdf')
+
     print('highscoring: ' + str(hsdata.shape))
-    print('mean score: ' + str(np.mean(hsdata['Score'])))
-    plt.savefig(plots + '/hist-scores-cut.png')
-
-    # scatterplot of score-thresholded data
-    figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-    popt, pcov = opt.curve_fit(invfn, hsdata['Meas. M/z'].apply(float), hsdata['Dev.(ppm)'].apply(float), maxfev=maxfev,bounds=([-np.inf, -np.inf, -np.inf], [np.inf, min(data['Meas. M/z'].apply(float))-100, np.inf]))
-    plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
-
-    plt.scatter(hsdata['Meas. M/z'].apply(float), hsdata['Dev.(ppm)'].apply(float), c=hsdata['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-    plt.colorbar(label='Score')
-    plt.xlabel('M/z')
-    plt.ylabel('deviation (ppm)')
-    plt.ylim(-30,30)
-    plt.savefig(plots + '/scatter-hscoring.png')
-
+    print('mean score: ' + str(np.mean(hsdata[scorelabel])))
     print()
 
-    # cut everything further than ppm_threshold from the trendline
-    cleaned = data.loc[abs(data['Dev.(ppm)'].apply(float) - invfn(data['Meas. M/z'].apply(float), *popt)) < ppm_threshold]
-    print('ppm threshold: ' + str(cleaned.shape))
-    print('mean score: ' + str(np.mean(cleaned['Score'])))
+    popt, pcov = opt.curve_fit(fitfn, hsdata[mzlabel].apply(float), hsdata[ppmlabel].apply(float), maxfev=maxfev,
+                               bounds=([-np.inf, -np.inf, -np.inf], [np.inf, min(data[mzlabel].apply(float))-100 if fit == 'inv' else np.inf, np.inf]))
+
+    # scatterplot of score-thresholded data
+
+    mzscatter(hsdata, plots + '/scatter-hscoring.pdf', popt)
 
     # hist of ppm distribution, before & after cut
+
     figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
     plt.xlabel('|delta-ppm|')
     plt.ylabel('n')
-    plt.hist(abs(data['Dev.(ppm)'].apply(float) - invfn(data['Meas. M/z'].apply(float), *popt)), log=True, bins=100)
-    plt.vlines(ppm_threshold, 0, len(cleaned), linestyles='dashed', colors='k')
-    plt.savefig(plots + '/hist-ppms.png')
+    plt.hist(abs(data[ppmlabel].apply(float) - fitfn(data[mzlabel].apply(float), *popt)), log=True, bins=100)
+    plt.vlines(ppm_threshold, 0, len(data), linestyles='dashed', colors='k')
+    plt.savefig(plots + '/hist-ppms.pdf')
 
-    # scatterplot of ppm-thresholded data
-    figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
+    print('m/z deviation (30ppm): ' + str(np.sqrt(np.mean((data[ppmlabel].apply(float) - fitfn(data[mzlabel].apply(float), *popt)) ** 2))))
+    print('m/z deviation (hsdata): ' + str(np.sqrt(np.mean((hsdata[ppmlabel].apply(float) - fitfn(hsdata[mzlabel].apply(float), *popt)) ** 2))))
 
-    plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
 
-    plt.scatter(cleaned['Meas. M/z'].apply(float), cleaned['Dev.(ppm)'].apply(float), c=cleaned['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-    plt.colorbar(label='Score')
-    plt.xlabel('M/z')
-    plt.ylabel('deviation (ppm)')
-    plt.ylim(-30,30)
-    plt.savefig(plots + '/scatter-7ppm.png')
+    # cut everything further than ppm_threshold from the trendline
+    data = data.loc[abs(data[ppmlabel].apply(float) - fitfn(data[mzlabel].apply(float), *popt)) < ppm_threshold]
 
-    # hist of ppm-thresholded score distribution
-    figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-    plt.xlabel('score')
-    plt.ylabel('n')
-    plt.ylim(ymin,ymax)
-    plt.title("ppm: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(cleaned))
-    plt.hist(cleaned['Score'],log=True, bins=100, range=[0,xmax])
-    print('% 0: ' + str(100 * cleaned['Score'].value_counts()[0] / len(cleaned)))
-    plt.savefig(plots + '/hist-scores-ppm.png')
-
+    print('ppm threshold: ' + str(data.shape))
+    print('mean score: ' + str(np.mean(data[scorelabel])))
+    print('% 0: ' + str(100 * data[scorelabel].value_counts()[0] / len(data)))
     print()
+
+    print('m/z deviation (7ppm): ' + str(np.sqrt(np.mean((data[ppmlabel].apply(float) - fitfn(data[mzlabel].apply(float), *popt)) ** 2))))
+
+    # PLOTS
+    mzscatter(data, plots + '/scatter-7ppm.pdf', popt)
+    scorehist(data, "ppm: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(data), plots + '/hist-scores-ppm.pdf')
+
 
     # DISAMBIGUATION SECTION (REMOVE DUPLICATE PEPTIDES BASED ON SCORE)
 
-    cleaned['Start'] = cleaned['Range'].str.split(expand=True)[0]
-    cleaned['End'] = cleaned['Range'].str.split(expand=True)[2]
-    cleaned['Start'] = cleaned['Start'].apply(int)
-    cleaned['End'] = cleaned['End'].apply(int)
+    if rangelabel in data.columns:
+        data[startlabel] = data[rangelabel].str.split(expand=True)[0]
+        data[endlabel] = data[rangelabel].str.split(expand=True)[2]
+    data[startlabel] = data[startlabel].apply(int)
+    data[endlabel] = data[endlabel].apply(int)
 
-    grouped = cleaned.groupby(['Sequence', 'z'])
-    topscores = pd.DataFrame(columns=cleaned.columns)
+    grouped = data.groupby([seqlabel, zlabel])
+    topscores = pd.DataFrame(columns=data.columns)
     ties = 0
     for name, group in grouped:
-        topscoring = group.loc[group['Score'] == max(group['Score'])]
-        if(len(topscoring['Score']) > 1):
+        topscoring = group.loc[group[scorelabel] == max(group[scorelabel])]
+        if(len(topscoring[scorelabel]) > 1):
             ties = ties + 1
         topscores = pd.concat([topscores, topscoring.loc[topscoring['Int.'] == max(topscoring['Int.'])]])
     topscores.reset_index(inplace=True, drop=True)
 
-    #output topscores df as csv
-    #topscores.to_csv('topscores.csv')
-
     print('ties: ' + str(ties))
-
     print('topscores: ' + str(topscores.shape))
-    print('mean score: ' + str(np.mean(topscores['Score'])))
-
-    # hist of topscore score distribution
-    figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-    plt.xlabel('score')
-    plt.ylabel('n')
-    plt.ylim(ymin,ymax)
-    plt.title("topscores: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(topscores))
-    plt.hist(topscores['Score'],log=True, bins=100, range=[0,xmax])
-    print('% 0: ' + str(100 * topscores['Score'].value_counts()[0] / len(topscores)))
-    plt.savefig(plots + '/hist-scores-topscores.png')
-
-    # scatterplot of topscore data
-    figure, (ax1) = plt.subplots(1, 1, figsize=(5, 5))
-    plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
-    plt.scatter(topscores['Meas. M/z'].apply(float), topscores['Dev.(ppm)'].apply(float), c=topscores['Score'],
-                norm=colors.LogNorm(vmin=1, vmax=xmax))
-    plt.colorbar(label='Score')
-    plt.xlabel('M/z')
-    plt.ylabel('deviation (ppm)')
-    plt.ylim(-30, 30)
-    plt.savefig(plots + '/scatter-topscore.png')
-
+    print('mean score: ' + str(np.mean(topscores[scorelabel])))
+    print('% 0: ' + str(100 * topscores[scorelabel].value_counts()[0] / len(topscores)))
+    print('m/z deviation (topscores): ' + str(np.sqrt(np.mean((topscores[ppmlabel].apply(float) - fitfn(topscores[mzlabel].apply(float), *popt)) ** 2))))
     print()
+
+    # PLOTS
+    scorehist(topscores, "topscores: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(topscores), plots + '/hist-scores-topscores.pdf')
+    mzscatter(topscores, plots + '/scatter-topscore.pdf', popt)
+
+    if score_floor:
+        topscores = topscores.loc[topscores[scorelabel] >= score_floor]
+
+        # PLOTS
+        scorehist(topscores, "score-floor: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(topscores), plots + '/hist-scores-scorefloor.pdf')
+        mzscatter(topscores, plots + '/scatter-scorefloor.pdf', popt)
+
+        print('scorefloor: ' + str(topscores.shape))
+        print('mean score: ' + str(np.mean(topscores[scorelabel])))
+        print()
+
+    topscores.sort_values(['Start', 'End'], inplace=True)
+    topscores.reset_index(inplace=True, drop=True)
 
     flagged = pd.DataFrame()
     yellow = pd.DataFrame()
@@ -280,38 +284,41 @@ def main():
         grp = topscores.loc[redflag(topscores, r)]
         overlap = topscores.loc[yellowflag(topscores, r)]
         r = topscores.loc[topscores.index == i]
+        # if not grp.empty:
+        #     if r[scorelabel].iloc[0] == max(grp[scorelabel]):
+        #         ties = ties + 1
+        #     if r[scorelabel].iloc[0] <= max(grp[scorelabel]):
+        #         flagged = pd.concat([flagged, r])
+        #         continue
+        # if not overlap.empty:
+        #     if overlap_method == 'drop' or overlap_method != 'keep' and r[scorelabel].iloc[0] <= max(overlap[scorelabel]):
+        #         yellow = pd.concat([yellow, r])
+        #     overlaps = overlaps + 1
+
         if not grp.empty:
-            if r['Score'].iloc[0] == max(grp['Score']):
+            if r[scorelabel].iloc[0] == max(grp[scorelabel]):
                 ties = ties + 1
-            if r['Score'].iloc[0] <= max(grp['Score']):
-                # print(r[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
-                # print(grp[['Score', 'Sequence', 'Rt(min)', 'Meas. M/z']])
-                # print('\n\n')
+            if r[scorelabel].iloc[0] <= select_score or (overlap_method != 'keep'): # max(grp[scorelabel]) > select_score and
+                print('redflag')
+                print(r[[mzlabel, mrlabel, scorelabel, startlabel, endlabel, seqlabel]])
+                print(grp[[mzlabel, mrlabel, scorelabel, startlabel, endlabel, seqlabel]])
+                print('\n\n\n')
                 flagged = pd.concat([flagged, r])
                 continue
         if not overlap.empty:
-            if overlap_method == 'drop' or overlap_method != 'keep' and r['Score'].iloc[0] <= max(overlap['Score']):
+            lens_overlap = []
+            for j in overlap.index:
+                ovrow = overlap.loc[j]
+                lens_overlap.append(min(np.abs(int(ovrow[startlabel]) + skip_res - int(r[endlabel])), np.abs(
+                        int(r[startlabel]) + skip_res - int(ovrow[endlabel]))))
+            ovfrac = min(lens_overlap) / (int(ovrow[endlabel]) - (int(ovrow[startlabel]) + skip_res))
+            if r[scorelabel].iloc[0] <= select_score or (max(overlap[scorelabel]) > select_score and (overlap_method == 'drop' or overlap_method != 'keep' and ovfrac < ov_threshold)):
+                print('yellowflag')
+                print(r[[mzlabel, mrlabel, scorelabel, startlabel, endlabel, seqlabel]])
+                print(overlap[[mzlabel, mrlabel, scorelabel, startlabel, endlabel, seqlabel]])
+                print('\n\n\n')
                 yellow = pd.concat([yellow, r])
             overlaps = overlaps + 1
-
-    # #for all flagged peptides add a column to data df with 'flagged' value
-    # data['flagged'] = np.where(data['Sequence'].isin(flagged['Sequence']), 'flagged', '')
-    # #print the number of flagged peptides
-    # print('flagged: ' + str(len(flagged)))
-    # #output flagged df as csv
-    # #flagged.to_csv('flagged.csv')
-    #
-    #
-    # #for all yellow peptides add a column to the data df with 'yellow' value
-    # data['yellow'] = np.where(data['Sequence'].isin(yellow['Sequence']), 'yellow', '')
-    # #print the number of yellow peptides
-    # print('yellow: ' + str(len(yellow)))
-    # #output yellow df as csv
-    # #yellow.to_csv('yellow.csv')
-    #
-    # #output data df as csv with flagged column
-    # #data.to_csv('data2.csv', index=False)
-    #
 
     print('ties: ' + str(ties))
     print('overlaps: ' + str(overlaps))
@@ -321,101 +328,61 @@ def main():
     if not flagged.empty:
 
         print('flagged: ' + str(flagged.shape))
-        print('mean score: ' + str(np.mean(flagged['Score'])))
-
-
-        # scatterplot of flagged data
-        figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-        plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
-        plt.scatter(flagged['Meas. M/z'].apply(float), flagged['Dev.(ppm)'].apply(float), c=flagged['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-        plt.colorbar(label='Score')
-        plt.xlabel('M/z')
-        plt.ylabel('deviation (ppm)')
-        plt.ylim(-30,30)
-        plt.savefig(plots + '/scatter-flagged.png')
-
-        # hist of flagged score distribution
-        figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-        plt.xlabel('score')
-        plt.ylabel('n')
-        plt.ylim(ymin, ymax)
-        plt.title("flagged: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(flagged))
-        plt.hist(flagged['Score'],log=True, bins=100, range=[0,xmax])
-        if 0 in flagged['Score'].values:
-            print('% 0: ' + str(100 * flagged['Score'].value_counts()[0] / len(flagged)))
+        print('mean score: ' + str(np.mean(flagged[scorelabel])))
+        if 0 in flagged[scorelabel].values:
+            print('% 0: ' + str(100 * flagged[scorelabel].value_counts()[0] / len(flagged)))
         else:
             print('% 0: ' + str(0))
+        print('m/z deviation (flagged): ' + str(np.sqrt(np.mean((flagged[ppmlabel].apply(float) - fitfn(flagged[mzlabel].apply(float), *popt)) ** 2))))
         print()
-        plt.savefig(plots + '/hist-scores-flagged.png')
+
+        # PLOTS
+        mzscatter(flagged, plots + '/scatter-flagged.pdf', popt)
+        scorehist(flagged, "flagged: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(flagged),
+                  plots + '/hist-scores-flagged.pdf')
 
     # HANDLE YELLOW FLAG PEPTIDES
 
     if not yellow.empty:
 
         print('yellow: ' + str(yellow.shape))
-        print('mean score: ' + str(np.mean(yellow['Score'])))
-
-
-        # scatterplot of yellow flag data
-        figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-        plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
-        plt.scatter(yellow['Meas. M/z'].apply(float), yellow['Dev.(ppm)'].apply(float), c=yellow['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-        plt.colorbar(label='Score')
-        plt.xlabel('M/z')
-        plt.ylabel('deviation (ppm)')
-        plt.ylim(-30,30)
-        plt.savefig(plots + '/scatter-yellow.png')
-
-        # hist of yellow flag score distribution
-        figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-        plt.xlabel('score')
-        plt.ylabel('n')
-        plt.ylim(ymin, ymax)
-        plt.title("yellow: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(yellow))
-        plt.hist(flagged['Score'],log=True, bins=100, range=[0,xmax])
-        if 0 in yellow['Score'].values:
-            print('% 0: ' + str(100 * yellow['Score'].value_counts()[0] / len(yellow)))
+        print('mean score: ' + str(np.mean(yellow[scorelabel])))
+        if 0 in yellow[scorelabel].values:
+            print('% 0: ' + str(100 * yellow[scorelabel].value_counts()[0] / len(yellow)))
         else:
             print('% 0: ' + str(0))
+        print('m/z deviation (yellow): ' + str(np.sqrt(np.mean((yellow[ppmlabel].apply(float) - fitfn(yellow[mzlabel].apply(float), *popt)) ** 2))))
+
         print()
-        plt.savefig(plots + '/hist-scores-yellow.png')
+
+        # PLOTS
+        mzscatter(yellow, plots + '/scatter-yellow.pdf', popt)
+        scorehist(yellow, "yellow: %d\n mean score: %1.5f\n %%0: %1.5f" % formatfill(yellow),
+                  plots + '/hist-scores-yellow.pdf')
 
     clean = topscores.drop(flagged.index.union(yellow.index))
 
     # SORT & SAVE TO CSV
 
-    clean.sort_values(['Start', 'End'], inplace=True)
+    clean.sort_values([startlabel, endlabel], inplace=True)
     if args.out:
         clean.to_csv(args.out, index=False)
     if args.rangeslist:
-        clean[['Start', 'End']].to_csv(args.rangeslist, index=False)
+        clean[[startlabel, endlabel]].to_csv(args.rangeslist, index=False)
+
     print('clean: ' + str(clean.shape))
-    print('mean score: ' + str(np.mean(clean['Score'])))
-
-    # scatterplot of cleaned data
-    figure, (ax1) = plt.subplots(1, 1, figsize=(5,5))
-    plt.plot(np.sort(data['Meas. M/z'].apply(float)), invfn(np.sort(data['Meas. M/z'].apply(float)), *popt))
-
-    plt.scatter(clean['Meas. M/z'].apply(float), clean['Dev.(ppm)'].apply(float), c=clean['Score'], norm=colors.LogNorm(vmin=1, vmax=xmax))
-    plt.colorbar(label='Score')
-    plt.xlabel('M/z')
-    plt.ylabel('deviation (ppm)')
-    plt.ylim(-30,30)
-    plt.savefig(plots + '/scatter-clean.png')
-
-    # hist of cleaned score distribution
-    figure, (ax1) = plt.subplots(1, 1, figsize=(6,6))
-    plt.xlabel('score')
-    plt.ylabel('n')
-    plt.ylim(ymin,ymax)
-    plt.title("clean: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(clean))
-    plt.hist(clean['Score'],log=True, bins=100, range=[0,xmax])
-    if 0 in clean['Score'].values:
-        print('% 0: ' + str(100 * clean['Score'].value_counts()[0] / len(clean)))
+    print('mean score: ' + str(np.mean(clean[scorelabel])))
+    if not yellow.empty:
+        print('ambiguous: ' + str(overlaps - yellow.shape[0]))
+    if 0 in clean[scorelabel].values:
+        print('% 0: ' + str(100 * clean[scorelabel].value_counts()[0] / len(clean)))
     else:
         print('% 0: ' + str(0))
-    plt.savefig(plots + '/hist-scores-clean.png')
-    
-    
+    print('m/z deviation (clean): ' + str(np.sqrt(np.mean((clean[ppmlabel].apply(float) - fitfn(clean[mzlabel].apply(float), *popt)) ** 2))))
+
+    # PLOTS
+    mzscatter(clean, plots + '/scatter-clean.pdf', popt)
+    scorehist(clean, "clean: %d\n mean score: %1.5f\n %%0: %1.5f" %formatfill(clean), plots + '/hist-scores-clean.pdf')
+
 if __name__ == '__main__':
     main()
