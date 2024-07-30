@@ -2,7 +2,7 @@
 PIGEON
 ======
 
-**pigeon** is a stand-only program that takes in a list of peptide pool csv 
+**PIGEON** (Peptide ID Generation for Exchange Of Nuclei) is a stand-only program that takes in a list of peptide pool csv 
 and outputs a cleaned csv of pooled data. It also outputs a rangeslist table for merge in FEATHER.
 
 CMD Options
