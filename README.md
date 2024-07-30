@@ -8,7 +8,7 @@ PIGEON-FEATHER (*Peptide ID Generation for Exchange Of Nuclei-Free Energy Assign
 
 ## Documentation
 
-PIGEON-FEATHER can be used from Jupyter (recommended), or by writing Python scripts. The docs, can be found at [https://glasgowlab.github.io/PIGEON-FEATHER/docs/](https://glasgowlab.github.io/PIGEON-FEATHER/docs/).
+PIGEON-FEATHER can be used from Jupyter (recommended), or by writing Python scripts. The documentation can be found at [https://glasgowlab.github.io/PIGEON-FEATHER/docs/](https://glasgowlab.github.io/PIGEON-FEATHER/docs/).
 
 ## Installation
 
