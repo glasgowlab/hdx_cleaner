@@ -11,7 +11,6 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
-import pigeon_feather
 import sys
 
 sys.path.insert(0, os.path.abspath('../../'))
@@ -43,6 +42,7 @@ extensions = [
     'sphinx_copybutton',
 ]
 
+html_output = '../docs/'
 
 def _preprocess_notebooks():
     """hooks into ExecutePreprocessor.preprocess to execute our own filters."""
