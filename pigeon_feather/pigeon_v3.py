@@ -301,9 +301,9 @@ class Pool:
                         elif pvc:
                             maxmz = max([max(match2.pep.fragpeaks), max(match2.peak.ms2s)])
                             minmz = min([min(match2.pep.fragpeaks), min(match2.peak.ms2s)])
-                            prob = match2.pep.fragpeaks.size * 2 * threshold / (maxmz - minmz)
+                            prob = match2.peak.ms2s.size * 2 * threshold / (maxmz - minmz)
                             pvs.append(
-                                stats.binomtest(n_unique, match2.peak.ms2s.size, prob, alternative='greater').pvalue)
+                                stats.binomtest(n_unique, match2.pep.fragpeaks.size, prob, alternative='greater').pvalue)
                             print(pvs[-1])
 
                 print()
@@ -324,9 +324,9 @@ class Pool:
                             n_unique = np.count_nonzero(mask * match2_mzs)
                             maxmz = max([max(match2.pep.fragpeaks), max(match2.peak.ms2s)])
                             minmz = min([min(match2.pep.fragpeaks), min(match2.peak.ms2s)])
-                            prob = match2.pep.fragpeaks.size * 2 * threshold / (maxmz - minmz)
+                            prob = match2.peak.ms2s.size * 2 * threshold / (maxmz - minmz)
                             samepvs.append(
-                                stats.binomtest(n_unique, match2.peak.ms2s.size, prob, alternative='greater').pvalue)
+                                stats.binomtest(n_unique, match2.pep.fragpeaks.size, prob, alternative='greater').pvalue)
                             print(samepvs[-1])
                         if stats.combine_pvalues(samepvs).pvalue > pvc or (
                                 cut_method == 'drop' and stats.combine_pvalues(pvs).pvalue <= pvc):
