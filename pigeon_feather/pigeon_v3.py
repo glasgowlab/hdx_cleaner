@@ -142,7 +142,7 @@ class Pool:
         n_tries = [np.prod(match.fragmatch.shape) for match in matches]
         score = [match.score for match in matches]
 
-        df = pd.DataFrame(data={'compound #': cmpdnum, 'run ID': runid 'sequence': sequence,
+        df = pd.DataFrame(data={'compound #': cmpdnum, 'run ID': runid, 'sequence': sequence,
                                 'Start': start, 'End': end, 'intensity': int,
                                 'z': z, 'mass (calc)': m_calc, 'm/z (calc)': mz_calc,
                                 'mass (meas)': m_meas, 'm/z (meas)': mz_meas,
