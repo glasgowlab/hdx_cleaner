@@ -123,6 +123,7 @@ class Pool:
     # MAKE TABLE OF FEATURES FOR MATCHED PEPTIDES
     def pool_output(self, matches, path=None):
         cmpdnum = [match.peak.cmpdnum for match in matches]
+        runid = [match.peak.runid for match in matches]
         sequence = [match.pep.sequence for match in matches]
         start = [match.pep.start + 1 for match in matches]
         end = [match.pep.end for match in matches]
@@ -141,7 +142,7 @@ class Pool:
         n_tries = [np.prod(match.fragmatch.shape) for match in matches]
         score = [match.score for match in matches]
 
-        df = pd.DataFrame(data={'compound #': cmpdnum, 'sequence': sequence,
+        df = pd.DataFrame(data={'compound #': cmpdnum, 'run ID': runid 'sequence': sequence,
                                 'Start': start, 'End': end, 'intensity': int,
                                 'z': z, 'mass (calc)': m_calc, 'm/z (calc)': mz_calc,
                                 'mass (meas)': m_meas, 'm/z (meas)': mz_meas,
@@ -328,7 +329,7 @@ class Pool:
                             samepvs.append(
                                 stats.binomtest(n_unique, match2.pep.fragpeaks.size, prob, alternative='greater').pvalue)
                             print(samepvs[-1])
-                        if stats.combine_pvalues(samepvs).pvalue > pvc or (
+                        if stats.combine_pvalues(samepvs).pvalue >= pvc or (
                                 cut_method == 'drop' and stats.combine_pvalues(pvs).pvalue <= pvc):
                             exclude.append(match1)
                             print('pvalue, dropping')
