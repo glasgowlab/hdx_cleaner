@@ -2,20 +2,15 @@
 FEATHER
 =======
 
-FEATHER (xx) is a method to determine PFs at residue resolution 
-using medium resolution HDX/MS datasets using a Bayesian approach by 
-doing isotopic mass envelope fitting.
+**FEATHER** (Free Energy Assignment Through Hydrogen Exchange Rates) is a 
+is a Bayesian method that combines peptide subtraction, isotopic mass 
+envelope reconstruction, and Monte Carlo (MC) sampling to assign PFs for each individual residue.
 
 
-Why we need high resolution PFs
--------------------------------
-
-The high resolution PFs are needed for the following reasons:
-
-- Proection factors (PFs) are equilibrium constant of the local unfold process of protein backbonea amides.
-
-- PFs is a way to define FEL
-
+.. figure:: ../image/envelope_reconstruction.png
+   :alt: FEATHER
+   :width: 800px
+   :figclass: align-center
 
 classes
 -------

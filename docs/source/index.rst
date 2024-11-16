@@ -3,14 +3,18 @@
 Welcome to  PIGEON-FEATHER's documentation!
 ===========================================
 
-**PIGEON** is an acronym for *Peptide ID Generation for Exchange of Nuclei*, while
-**FEATHER** represents *Finding Epitopes for Allostery Through Hydrogen Exchange Rates*.
-PIGEON-FEATHER is a Python package for the analysis of HDX-MS data. 
-Current features include:
+.. figure:: ../image/pigeon_feather.png
+   :alt: PIGEON-FEATHER
+   :width: 800px
+   :figclass: align-center
 
-* PIGEON: a tool for peptide disambiguation 
-* FEATHER: a tool to calculate protection factors (PFs)/exchange rates at the residue level
-* FEATHER also supports peptide-level analysis and visualization
+**PIGEON-FEATHER** (*Peptide ID Generation for Exchange Of Nuclei-Free 
+Energy Assignment Through Hydrogen Exchange Rates*): a method 
+for calculating free energies of opening (∆Gop) at single- or 
+near-single-amino acid resolution for protein ensembles of all 
+sizes from hydrogen exchange/mass spectrometry (HX/MS) data. 
+
+
 
 
 .. toctree::

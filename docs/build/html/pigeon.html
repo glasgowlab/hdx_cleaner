@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="writer-html5" lang="Python" data-content_root="./">
+<html class="writer-html5" lang="en" data-content_root="./">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
@@ -16,7 +16,7 @@
   
         <script src="_static/jquery.js?v=5d32c60e"></script>
         <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
-        <script src="_static/documentation_options.js?v=c4af95dd"></script>
+        <script src="_static/documentation_options.js?v=049aceee"></script>
         <script src="_static/doctools.js?v=888ff710"></script>
         <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
         <script src="_static/clipboard.min.js?v=a7894cd8"></script>
@@ -97,10 +97,9 @@ and outputs a cleaned csv of pooled data. It also outputs a rangeslist table for
 <p>Type <code class="docutils literal notranslate"><span class="pre">pigeon</span> <span class="pre">--help</span></code> to see the following options:</p>
 <div class="line-block">
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--t</span></code>, <code class="docutils literal notranslate"><span class="pre">--table</span></code>: Path(s) to input csv. Required</div>
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--b</span></code>, <code class="docutils literal notranslate"><span class="pre">--batch</span></code>:</div>
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code>, <code class="docutils literal notranslate"><span class="pre">--out</span></code>: path to output csv. Default: 'CLEAN.csv'</div>
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--p</span></code>, <code class="docutils literal notranslate"><span class="pre">--plots</span></code>: directory for output plots. Default: './csvplots'</div>
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--ov</span></code>, <code class="docutils literal notranslate"><span class="pre">--overlap</span></code>: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code>, <code class="docutils literal notranslate"><span class="pre">--out</span></code>: path to output csv, if any.</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--p</span></code>, <code class="docutils literal notranslate"><span class="pre">--plots</span></code>: directory for output plots. Default: ‘./csvplots’</div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--ov</span></code>, <code class="docutils literal notranslate"><span class="pre">--overlap</span></code>: flag specifying how to treat overlapping duplicates. Options: ‘keep’, ‘drop’, ‘select’ (or any other). Default: ‘select’</div>
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--r</span></code>, <code class="docutils literal notranslate"><span class="pre">--rangeslist</span></code>: path to output rangeslist, if any.</div>
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--RTC</span></code>: RT cutoff for duplicate peptides. Default: 0.5</div>
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--MZC</span></code>: m/z cutoff for duplicate peptides. Default: 0.1</div>
@@ -111,11 +110,10 @@ and outputs a cleaned csv of pooled data. It also outputs a rangeslist table for
 <p>Default inputs</p>
 <div class="line-block">
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--t</span></code> (list of peptide pool csvs)</div>
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--b</span></code> (table for batched data. Each row contains 'name' string for protein, then all pool csvs corresponding to that pool)</div>
 </div>
 <p>Default outputs</p>
 <div class="line-block">
-<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code> (batched and cleaned peptide pool csv): <code class="docutils literal notranslate"><span class="pre">CLEAN.csv</span></code></div>
+<div class="line"><code class="docutils literal notranslate"><span class="pre">--o</span></code> (batched and cleaned peptide pool csv)</div>
 <div class="line"><code class="docutils literal notranslate"><span class="pre">--r</span></code> (rangeslist table for merge in post-PIGEON)</div>
 </div>
 <p>In the plot directory, the following files are generated:</p>
@@ -155,7 +153,7 @@ and outputs a cleaned csv of pooled data. It also outputs a rangeslist table for
 </pre></div>
 </div>
 <p>Alternative usage example:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pigeon<span class="w"> </span>biotools-cleaner.py<span class="w"> </span>--b<span class="w"> </span>batch-list.txt<span class="w"> </span>--p<span class="w"> </span>csvplots<span class="w"> </span>--ov<span class="w"> </span><span class="k">select</span><span class="w"> </span>--o<span class="w"> </span><span class="k">select</span>-pooled.csv
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pigeon<span class="w"> </span>--t<span class="w"> </span>pool-1.csv<span class="w"> </span>--o<span class="w"> </span><span class="k">select</span>-pooled.csv<span class="w"> </span>--r<span class="w"> </span>rangeslist.csv
 </pre></div>
 </div>
 </section>

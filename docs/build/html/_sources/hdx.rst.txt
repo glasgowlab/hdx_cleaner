@@ -1,21 +1,18 @@
 HDX/MS
 ======
 
-Hydrogen deuterium exchange coupled with mass spectrometry (HDX-MS) is a 
-powerful technique that links protein structure, dynamics, and function 
-by measuring mass changes resulting from the exchange between a protein’s
-backbone amide hydrogens and deuterium in a D2O buffer. This exchange 
-rate is affected by the protein's folded state, dynamics, and the chemical
-properties of its amino acid sequence, particularly hydrogen bonding
-stability in the protein backbone and solvent accessibility. HDX-MS has
-thus been employed to study protein conformational dynamics. 
+Hydrogen exchange with mass spectrometry (HX/MS) measures
+the rate of exchange of labile hydrogen atoms with deuterium 
+in a protein's backbone amide groups to report on structural 
+changes in protein ensembles but at the peptide level, not individual amino acids.
+With the advent of integrated robotics for automated sample preparation
+and accurate protein structure prediction methods
+for improved data interpretation, HX/MS is an increasingly 
+powerful method for probing solution-state protein ensembles. 
+However, the technique is not used to its full potential due to 
+its peptide resolution.
 
-
-However, HDX data are typically used qualitatively due to their peptide-level 
-resolution. As such, a computational method to calculate accurate H-D exchange 
-rates at single-residue resolution would be extremely valuable. These 
-rates can be converted into protection factors (PFs), which represent the 
-equilibrium constant in the local folding-unfolding process of a backbone 
-amide and can be used to calculate the change in free energy for unfolding at 
-each residue. PFs derived from HDX experiments are therefore key energetic 
-features of a protein ensemble.
+To address this problem, we developed **PIGEON-FEATHER** (Peptide ID Generation 
+for Exchange Of Nuclei-Free Energy Assignment Through Hydrogen Exchange Rates): 
+an HX/MS analysis method to calculate the absolute free energy of opening (∆Gop) 
+for almost all the amino acids in a protein ensemble. 

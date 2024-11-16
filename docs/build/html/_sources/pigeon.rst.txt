@@ -11,8 +11,7 @@ CMD Options
 Type ``pigeon --help`` to see the following options:
 
 | ``--t``, ``--table``: Path(s) to input csv. Required
-| ``--b``, ``--batch``:
-| ``--o``, ``--out``: path to output csv. Default: 'CLEAN.csv'
+| ``--o``, ``--out``: path to output csv, if any.
 | ``--p``, ``--plots``: directory for output plots. Default: './csvplots'
 | ``--ov``, ``--overlap``: flag specifying how to treat overlapping duplicates. Options: 'keep', 'drop', 'select' (or any other). Default: 'select'
 | ``--r``, ``--rangeslist``: path to output rangeslist, if any.
@@ -25,11 +24,10 @@ Type ``pigeon --help`` to see the following options:
 Default inputs
 
 | ``--t`` (list of peptide pool csvs)
-| ``--b`` (table for batched data. Each row contains 'name' string for protein, then all pool csvs corresponding to that pool)
 
 Default outputs
   
-| ``--o`` (batched and cleaned peptide pool csv): ``CLEAN.csv``
+| ``--o`` (batched and cleaned peptide pool csv)
 | ``--r`` (rangeslist table for merge in post-PIGEON)
 
 In the plot directory, the following files are generated:
@@ -72,4 +70,4 @@ Alternative usage example:
 
 .. code-block:: bash
 
-   pigeon biotools-cleaner.py --b batch-list.txt --p csvplots --ov select --o select-pooled.csv
+   pigeon --t pool-1.csv --o select-pooled.csv --r rangeslist.csv
