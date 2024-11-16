@@ -745,6 +745,7 @@ def remove_tps_from_state(removing_tps, state):
     # print(f'Number of timepoints before removing: {n_tp}')
 
     num_pep_removed = 0
+    peptides_removed = []
 
     new_peptides = []
 
@@ -756,6 +757,7 @@ def remove_tps_from_state(removing_tps, state):
             
         else:
             num_pep_removed += 1
+            peptides_removed.append(pep)
             # print(f"{pep.identifier} removed")
 
     state.peptides = new_peptides
@@ -774,11 +776,18 @@ def remove_tps_from_state(removing_tps, state):
             final_peptides.append(pep)
         else:
             num_pep_removed += 1
+            peptides_removed.append(pep)
             #print(f"{pep.identifier} removed")
 
     state.peptides = final_peptides
+    removed_idfs = [pep.identifier for pep in peptides_removed]
+    removed_idfs.sort(key=lambda x: int(x.split('-')[0]))
+    # if print_details:
+    #     print("-"*10)
+    #     print(','.join(removed_idfs))
+    #     print("-"*10)
 
-    return num_pep_removed
+    return num_pep_removed, removed_idfs
 
 
 def group_by_attributes(objects, attributes):

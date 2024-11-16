@@ -1030,16 +1030,45 @@ class SimulatedData:
         ]
         self.sequence = "".join(random.choices(AA_list, k=self.length))
 
-    def gen_logP(
-        self,
-    ):
-        'generate a random logP values for each residue in the sequence'
+    # def gen_logP(
+    #     self,
+    # ):
+    #     'generate a random logP values for each residue in the sequence'
         
-        logP = np.array([random.uniform(0.0, 14.0) for i in range(self.length)])
-        # Proline residues are not exchangeable
-        for i in range(self.length):
-            if self.sequence[i] == "P":
-                logP[i] = 0.0
+    #     logP = np.array([random.uniform(0.0, 14.0) for i in range(self.length)])
+    #     # Proline residues are not exchangeable
+    #     for i in range(self.length):
+    #         if self.sequence[i] == "P":
+    #             logP[i] = 0.0
+    #     self.logP = logP
+    
+    def gen_logP(self):
+        prob = [0.9, 0.05, 0.05]  # 90% probability in [2, 12], 5% probability in [12, 14] or [0, 2]
+        logP = []
+        
+        while len(logP) < self.length:
+            # Generate random number based on probability
+            if random.choices([1, 2, 3], weights=prob)[0] == 1:
+                new_value = random.uniform(2, 12)
+            elif random.choices([1, 2, 3], weights=prob)[0] == 2:
+                new_value = random.uniform(12, 14)
+            else:
+                new_value = random.uniform(0, 2)
+            
+            # Check constraints
+            if len(logP) >= 4:
+                last_four = logP[-4:]
+                if (
+                    all(x > 12 for x in last_four) and new_value > 12  # Avoid 5 consecutive values >12
+                    or all(x < 2 for x in last_four) and new_value < 2  # Avoid 5 consecutive values <2
+                ):
+                    continue  # Constraint not met, generate new value
+            
+            # Add value if constraints are met
+            logP.append(new_value)
+        
+        logP = np.array(logP)
+        logP[self.sequence == "P"] = 0.0
         self.logP = logP
 
     def cal_k_init(self):

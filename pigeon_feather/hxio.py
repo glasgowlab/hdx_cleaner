@@ -350,7 +350,7 @@ def convert_dataframe_to_bayesianhdx_format(
     print(f"Data saved to {OUTPATH}")
 
 
-def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
+def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path, print_details=True):
     """
     Load raw MS data from csv files to hdxms_data object.
     !!! use it before reindex_peptide_from_pdb
@@ -419,11 +419,16 @@ def load_raw_ms_to_hdxms_data(hdxms_data, raw_spectra_path):
             for tp in pep.timepoints
             if pep.max_d / pep.theo_max_d < 0.6
         ]
-        num_pep_removed = tools.remove_tps_from_state(bad_timepoints, state)
-        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to missing raw MS data.")
         
-        num_pep_removed = tools.remove_tps_from_state(high_back_ex_tps, state)
-        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to high back exchange.")
+        print("="*20)
+        num_pep_removed, removed_idfs = tools.remove_tps_from_state(bad_timepoints, state)
+        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to missing raw MS data")
+        if print_details:   
+            print(','.join(removed_idfs))
+        num_pep_removed, removed_idfs = tools.remove_tps_from_state(high_back_ex_tps, state)
+        print(f"Removed {num_pep_removed} peptides from state {state.state_name} due to high back exchange")
+        if print_details:
+            print(','.join(removed_idfs))
 
     print("Done loading raw MS data.")
 
@@ -498,6 +503,16 @@ def get_all_statics_info(hdxms_datas):
     all_tps = [tp for pep in all_peptides for tp in pep.timepoints if tp.deut_time != np.inf and tp.deut_time != 0.0]
     time_course = sorted(list(set([tp.deut_time for tp in all_tps])))
 
+    def _group_and_average(numbers, threshold=50):
+        numbers.sort()
+        groups, current_group = [], [numbers[0]]
+        for number in numbers[1:]:
+            (current_group.append(number) if number - current_group[0] <= threshold else (groups.append(current_group), current_group := [number]))
+        groups.append(current_group)
+        return groups, [round(sum(group) / len(group), 1) for group in groups]
+
+    groups, avg_timepoints = _group_and_average(time_course)
+
 
     # Calculate back exchange rates and IQR
     peptides_with_exp = [pep for pep in all_peptides if pep.get_timepoint(np.inf) is not None]
@@ -512,8 +527,8 @@ def get_all_statics_info(hdxms_datas):
     print(" "*20 + "HDX-MS Data Statistics")
     print("=" * 60)
     print(f"States names: {state_names}")
-    print(f"Time course (s): {time_course}")
-    print(f"Number of time points: {len(time_course)}")
+    print(f"Time course (s): {avg_timepoints}")
+    print(f"Number of time points: {len(avg_timepoints)}")
     print(f"Protein sequence length: {len(protein_sequence)}")
     print(f"Average coverage: {coverage_non_zero:.2f}")
     print(f"Number of unique peptides: {len(unique_peptides)}")

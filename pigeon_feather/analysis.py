@@ -220,14 +220,21 @@ class Analysis:
         df_be_list_all = []  
         df_sidechain_ex_list_all = []
         range_chunks = [(i*chunk_size+1, (i+1)*chunk_size) for i in range(chunk_num)]
+        print(range_chunks)
 
         for run_index in range(1, run_num+1):
             df_list_i = []
             df_be_list_i = []
             df_sidechain_ex_list_i = []
             bayesian_hdx_data_files = sorted([os.path.join(bayesian_hdx_data_folder, f) for f in os.listdir(bayesian_hdx_data_folder) if f.endswith(f'{run_index}.dat') and state_name in f])
+            print(f"Found {len(bayesian_hdx_data_files)} files for state {state_name}, run {run_index}")
 
             for i, chunk in enumerate(range_chunks):
+                # if i >= len(bayesian_hdx_data_files):
+                #     print(f"Error: Not enough files for chunk {i}. Only {len(bayesian_hdx_data_files)} files found.")
+                #     break
+                # print(f"Processing chunk {i+1}/{chunk_num}, file: {bayesian_hdx_data_files[i]}")
+
                 pof = Bayesian_hdx_ParseOutputFile(bayesian_hdx_data_files[i])
                 df = pof.get_best_scoring_models_pf_df(N=N)
                 if isinstance(df, pd.DataFrame):
@@ -1410,9 +1417,10 @@ def get_index_offset(
     first_protein_res_index = protein.resids[0] - 1
 
     pdb_sequence = pdb2seq(pdb_file)
-    a_middle_pep = ana_obj.results_obj.protein_sequence[80:90]
+    half_length = int(len(ana_obj.results_obj.protein_sequence) / 2)
+    a_middle_pep = ana_obj.results_obj.protein_sequence[half_length-5:half_length+5]
     pdb_start, pdb_end = find_peptide(pdb_sequence, a_middle_pep)
-    index_offset = 80 - (pdb_start+first_protein_res_index)
+    index_offset = half_length-5 - (pdb_start+first_protein_res_index)
 
     # check if the offset is correct
     for residue in protein.residues[20:30]:

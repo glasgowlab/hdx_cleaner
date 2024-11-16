@@ -138,6 +138,7 @@ class UptakePlot:
             ax=ax,
             palette=self.color_dict,
             estimator="mean",
+            legend=False 
             )            
 
 
