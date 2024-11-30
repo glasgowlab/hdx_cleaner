@@ -3,6 +3,7 @@ import math
 import random
 import re
 import warnings
+import time
 
 import numpy as np
 import pandas as pd
@@ -249,12 +250,13 @@ class ProteinState:
         self.num_subtracted_added = 0
         self.hdxms_data = hdxms_data
 
-    def add_peptide(self, peptide):
+    def add_peptide(self, peptide, allow_duplicate=False):
         'add a peptide to the ProteinState object'
         # Check if peptide already exists
-        for existing_peptide in self.peptides:
-            if existing_peptide.identifier == peptide.identifier:
-                raise ValueError(f"{ peptide.identifier} Peptide already exists")
+        if not allow_duplicate:
+            for existing_peptide in self.peptides:
+                if existing_peptide.identifier == peptide.identifier:
+                    raise ValueError(f"{ peptide.identifier} Peptide already exists")
         self.peptides.append(peptide)
         return peptide
 
@@ -980,7 +982,8 @@ class ResidueCompare:
 
 
 class SimulatedData:
-    def __init__(self, length=100, seed=42, noise_level=0, saturation=1.0, random_backexchange=False):
+    def __init__(self, length=100, seed=42, noise_level=0, saturation=1.0, random_backexchange=False, drop_timepoints=True,
+                 temperature=293.0, pH=7.0):
         '''
         A class to generate simulated HDX-MS data.
 
@@ -988,7 +991,8 @@ class SimulatedData:
         :param seed: random seeds, defaults to 42
         :param noise_level: noise add to the isotopic envelope
         '''
-        
+        self.temperature = temperature
+        self.pH = pH
         random.seed(seed)
         self.length = length
         self.gen_seq()
@@ -1000,34 +1004,15 @@ class SimulatedData:
         self.noise_level = noise_level
         self.saturation = saturation
         self.random_backexchange = random_backexchange
+        self.drop_timepoints = drop_timepoints
 
+        
     def gen_seq(
         self,
     ):
         'generate a random protein sequence of the given length'
         
-        AA_list = [
-            "A",
-            "R",
-            "N",
-            "D",
-            "C",
-            "Q",
-            "E",
-            "G",
-            "H",
-            "I",
-            "L",
-            "K",
-            "M",
-            "F",
-            "P",
-            "S",
-            "T",
-            "W",
-            "Y",
-            "V",
-        ]
+        AA_list = ["A", "R", "N", "D", "C", "Q", "E", "G", "H", "I", "L", "K", "M", "F", "P", "S", "T", "W", "Y", "V"]
         self.sequence = "".join(random.choices(AA_list, k=self.length))
 
     # def gen_logP(
@@ -1073,7 +1058,7 @@ class SimulatedData:
 
     def cal_k_init(self):
         'calculate intrinsic exchange rate for each residue'
-        self.log_k_init = np.log10(k_int_from_sequence(self.sequence, 293.0, 7.0))
+        self.log_k_init = np.log10(k_int_from_sequence(self.sequence, self.temperature, self.pH))
 
     def cal_k_ex(self):
         'calculate exchange rate for each residue'
@@ -1081,14 +1066,11 @@ class SimulatedData:
 
     def calculate_incorporation(self):
         'calculate deuterium incorporation for each residue'
-        incorporations = []
-        for res_i in range(self.length):
-            log_kex = self.log_k_ex[res_i]
-            incorporations.append(
-                calculate_simple_deuterium_incorporation(log_kex, self.timepoints)
-            )
-
-        self.incorporations = np.array(incorporations)
+        
+        incorporations = {}
+        for tp in self.timepoints:
+            incorporations[tp] = calculate_simple_deuterium_incorporation(self.log_k_ex, tp)
+        self.incorporations = incorporations
 
     def gen_peptides(self, min_len=5, max_len=12, max_overlap=5, num_peptides=30):
         'generate random peptides from the protein sequence'
@@ -1114,11 +1096,19 @@ class SimulatedData:
                         chunks.append(self.sequence[start:end])
                 count += 1
 
-        covered = [False] * sequence_length
+        covered = np.zeros(sequence_length, dtype=bool)
         num_pairs = 0
+        
+        attempt = 0
+        # while not (
+        #     all(covered) and (num_peptides * 0.7 < num_pairs < num_peptides * 1.0)
+        # ):
         while not (
-            all(covered) and (num_peptides * 0.7 < num_pairs < num_peptides * 1.0)
+            sum(covered) >= 0.9 * self.length and (num_peptides * 0.7 < num_pairs < num_peptides * 1.3)
         ):
+            random.seed(self.seed + attempt)
+            attempt += 1
+         
             reduced_chunks = random.sample(
                 chunks,
                 k=num_peptides,
@@ -1130,8 +1120,7 @@ class SimulatedData:
             for pep in reduced_chunks:
                 start = self.sequence.find(pep)
                 end = start + len(pep)
-                for i in range(start, end):
-                    covered[i] = True
+                covered[start:end] = True
 
                 if start in N_overlap_groups:
                     N_overlap_groups[start].append(pep)
@@ -1153,6 +1142,11 @@ class SimulatedData:
             ]
             num_pairs = len(set(all_pairs))
 
+        # add more duplicates
+        for i in range(3):
+            duplicates = random.sample(reduced_chunks, k=int(0.1*len(reduced_chunks)))
+            reduced_chunks = reduced_chunks + duplicates
+            
         self.peptides = [
             i
             for i in sorted(reduced_chunks, key=lambda x: self.sequence.find(x))
@@ -1181,11 +1175,24 @@ class SimulatedData:
                 random_back_exchange = 0.0
                 
             try:
-                protein_state.add_peptide(peptide_obj)
-                for tp_i, tp in enumerate(self.timepoints):
-                    tp_raw_deut = self.incorporations[
-                        peptide_obj.start - 1 : peptide_obj.end
-                    ][:, tp_i]
+                protein_state.add_peptide(peptide_obj, allow_duplicate=True)
+                
+                # make sure 0 timepoint is included and is the first timepoint
+                if self.drop_timepoints:
+                    timepoints = self.timepoints.copy()
+                    timepoints = random.sample(list(timepoints), k=int(0.8*len(timepoints)))
+                    timepoints.sort()
+                else:
+                    timepoints = self.timepoints.copy()
+                
+                if 0 not in timepoints:
+                    timepoints = np.insert(timepoints, 0, 0)
+                
+                for tp_i, tp in enumerate(timepoints):
+                    # tp_raw_deut = self.incorporations[
+                    #     peptide_obj.start - 1 : peptide_obj.end
+                    # ][:, tp_i]
+                    tp_raw_deut = self.incorporations[tp][peptide_obj.start - 1 : peptide_obj.end]
                     tp_raw_deut = tp_raw_deut * (1 - random_back_exchange) * self.saturation
                     pep_incorp = sum(tp_raw_deut)
                     # random_stddev = peptide_obj.theo_max_d * self.noise_level * random.uniform(-1, 1)
@@ -1196,10 +1203,10 @@ class SimulatedData:
                         pep_incorp + random_stddev,
                         random_stddev,
                     )
-
-                    t0_theo = spectra.get_theoretical_isotope_distribution(tp_obj)[
-                        "Intensity"
-                    ].values
+                    
+                    if tp == 0.0:
+                        t0_theo = spectra.get_theoretical_isotope_distribution(tp_obj)[1]
+                        
                     p_D = event_probabilities(tp_raw_deut)
 
                     isotope_envelope = np.convolve(t0_theo, p_D)
@@ -1215,7 +1222,8 @@ class SimulatedData:
 
                     peptide_obj.add_timepoint(tp_obj)
 
-            except:
+            except Exception as e:
+                #print(e)
                 continue
 
         self.hdxms_data = hdxms_data

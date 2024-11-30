@@ -37,8 +37,8 @@ def get_theoretical_isotope_distribution(timepoint):
     theo_intensity = np.array([iso.getIntensity() for iso in isotope_distribution.getContainer()])
 
     #plt.stem(theo_mz, theo_intensity, linefmt='-', markerfmt=' ', basefmt=" ",)
-    df_theo = pd.DataFrame({'m/z': theo_mz, 'Intensity': theo_intensity})
-    return df_theo
+    #df_theo = pd.DataFrame({'m/z': theo_mz, 'Intensity': theo_intensity})
+    return theo_mz, theo_intensity
 
 
 
@@ -129,7 +129,7 @@ def fill_missing_mz(df, default_intensity=1e-10, default_sn_ratio=0):
 
 def get_theo_ms(timepoint):
     
-    t0_theo = get_theoretical_isotope_distribution(timepoint)['Intensity'].values
+    t0_theo = get_theoretical_isotope_distribution(timepoint)[1]
     tp_deut_iso_theo = convolute_deuterated_distribution(t0_theo, timepoint.num_d)
     
     return tp_deut_iso_theo
@@ -204,7 +204,7 @@ def get_isotope_envelope(timepoint, add_sn_ratio_to_tp=False):
     
     #mz_start, mz_end = np.where(tp_deut_iso_theo> 0.01)[0][0], np.where(tp_deut_iso_theo> 0.01)[0][-1]
     mz_start = 0
-    mz_end = np.where(get_theoretical_isotope_distribution(timepoint)['Intensity'].values > 1e-3)[0][-1] + math.ceil(timepoint.num_d)
+    mz_end = np.where(get_theoretical_isotope_distribution(timepoint)[1] > 1e-3)[0][-1] + math.ceil(timepoint.num_d)
     #print(mz_start, mz_end)
     for mz_int in range(mz_start, mz_end+1):
         mask = (df_picked['m/z'] >= mz_int*1.00866491588-0.1) & (df_picked['m/z'] <= mz_int*1.00866491588+0.1)
