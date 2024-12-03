@@ -1181,12 +1181,14 @@ class SimulatedData:
                 if self.drop_timepoints:
                     timepoints = self.timepoints.copy()
                     timepoints = random.sample(list(timepoints), k=int(0.8*len(timepoints)))
-                    timepoints.sort()
                 else:
                     timepoints = self.timepoints.copy()
                 
                 if 0 not in timepoints:
                     timepoints = np.insert(timepoints, 0, 0)
+                    
+                # sort timepoints
+                timepoints.sort()
                 
                 for tp_i, tp in enumerate(timepoints):
                     # tp_raw_deut = self.incorporations[
@@ -1210,12 +1212,19 @@ class SimulatedData:
                     p_D = event_probabilities(tp_raw_deut)
 
                     isotope_envelope = np.convolve(t0_theo, p_D)
+                    # isotope_noise = np.array(
+                    #     [
+                    #         random.uniform(-1, 1) * self.noise_level * peak
+                    #         for peak in isotope_envelope
+                    #     ]
+                    # )
                     isotope_noise = np.array(
                         [
-                            random.uniform(-1, 1) * self.noise_level * peak
+                            random.uniform(-1, 1) * self.noise_level
                             for peak in isotope_envelope
                         ]
                     )
+                    
                     tp_obj.isotope_envelope = isotope_envelope + isotope_noise
                     tp_obj.isotope_envelope = normlize(tp_obj.isotope_envelope)
                     # tp_obj.isotope_envelope = isotope_envelope
