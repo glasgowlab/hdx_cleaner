@@ -100,7 +100,7 @@ class UptakePlot:
             ax=ax,
             palette=self.color_dict,
             s=600,
-            markers={1: "o", 2: "s", 3: "^", 4: "P", 5: "X", 6: "H", 7: "v"},
+            markers={1: "o", 2: "s", 3: "^", 4: "P", 5: "X", 6: "H", 7: "v", 8: "d", 9: "D", 10: "p" },
         )
 
 

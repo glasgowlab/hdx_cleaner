@@ -396,17 +396,18 @@ class Peptide:
 
         # self.max_d = self.get_max_d()
 
-    def add_timepoint(self, timepoint):
+    def add_timepoint(self, timepoint, allow_duplicate=False):
         'add a timepoint to the peptide'
         # Check if timepoint already exists
-        for existing_timepoint in self.timepoints:
-            if (
-                existing_timepoint.deut_time == timepoint.deut_time
-                and existing_timepoint.charge_state == timepoint.charge_state
-            ):
-                raise ValueError(
-                    f"{self.start}-{self.end} {self.sequence}: {timepoint.deut_time} (charge: {timepoint.charge_state})Timepoint already exists"
-                )
+        if not allow_duplicate:
+            for existing_timepoint in self.timepoints:
+                if (
+                    existing_timepoint.deut_time == timepoint.deut_time
+                    and existing_timepoint.charge_state == timepoint.charge_state
+                ):
+                    raise ValueError(
+                        f"{self.start}-{self.end} {self.sequence}: {timepoint.deut_time} (charge: {timepoint.charge_state})Timepoint already exists"
+                    )
 
         self.timepoints.append(timepoint)
         return timepoint
@@ -1220,14 +1221,17 @@ class SimulatedData:
                     # )
                     isotope_noise = np.array(
                         [
-                            random.uniform(-1, 1) * self.noise_level
+                            random.uniform(-1, 1) * self.noise_level/10 +  random.uniform(-1, 1) * self.noise_level * peak
                             for peak in isotope_envelope
                         ]
                     )
                     
-                    tp_obj.isotope_envelope = isotope_envelope + isotope_noise
-                    tp_obj.isotope_envelope = normlize(tp_obj.isotope_envelope)
-                    # tp_obj.isotope_envelope = isotope_envelope
+                    # force envelopes
+                    isotope_envelope = isotope_envelope + isotope_noise
+                    isotope_envelope[isotope_envelope < 0] = 0
+                    isotope_envelope = normlize(isotope_envelope)
+                    
+                    tp_obj.isotope_envelope = isotope_envelope
 
                     peptide_obj.add_timepoint(tp_obj)
 
